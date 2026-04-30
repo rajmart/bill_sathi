@@ -1,0 +1,431 @@
+/* ═══════════════════════════════════════════════════════════════
+   khata.css — Smart Cashier PWA (Bill Sathi)
+   Ledger / Khata account styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Add Customer Row ───────────────────────────────────────── */
+#khata-add-customer {
+  margin-bottom: var(--sp-md);
+}
+
+.add-customer-row {
+  display: flex;
+  gap: var(--sp-sm);
+  flex-wrap: wrap;
+}
+
+.add-customer-row input[type="text"],
+.add-customer-row input[type="tel"] {
+  flex: 1;
+  min-width: 120px;
+}
+
+.add-customer-row .btn-primary {
+  flex-shrink: 0;
+  padding: 10px 18px;
+}
+
+/* ─── Khata List Wrapper ─────────────────────────────────────── */
+#khata-list-wrapper {
+  margin-top: var(--sp-md);
+}
+
+#khata-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+
+.khata-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--sp-xl) 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* ─── Khata Customer Card ────────────────────────────────────── */
+.khata-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  padding: var(--sp-md);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Accent left bar */
+.khata-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
+  border-radius: 0 2px 2px 0;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.khata-card:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-default);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.khata-card:hover::before {
+  opacity: 1;
+}
+
+.khata-card:active {
+  transform: scale(0.99);
+}
+
+/* Card main section (avatar + info) */
+.khata-card-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  min-width: 0;
+  flex: 1;
+}
+
+/* Avatar circle */
+.khata-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: var(--text-inverse);
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(245, 166, 35, 0.3);
+  letter-spacing: -0.01em;
+}
+
+.khata-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.khata-name {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.khata-phone {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Balance section */
+.khata-balance-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  flex-shrink: 0;
+}
+
+.khata-balance {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.khata-balance.baki {
+  background: rgba(224, 82, 82, 0.12);
+  color: var(--accent-red);
+  border: 1px solid rgba(224, 82, 82, 0.2);
+}
+
+.khata-balance.jama {
+  background: rgba(39, 201, 123, 0.12);
+  color: var(--accent-green);
+  border: 1px solid rgba(39, 201, 123, 0.2);
+}
+
+.khata-balance.clear {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Delete button on card */
+.khata-delete-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.khata-delete-btn:hover {
+  background: rgba(224, 82, 82, 0.12);
+  border-color: rgba(224, 82, 82, 0.3);
+  color: var(--accent-red);
+}
+
+/* ─── Khata Detail Modal — Ledger ────────────────────────────── */
+
+/* Balance summary banner at top of modal */
+.ledger-balance-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-md) var(--sp-lg);
+  border-radius: var(--r-lg);
+  margin-bottom: var(--sp-md);
+  font-family: var(--font-display);
+}
+
+.ledger-balance-summary.baki {
+  background: rgba(224, 82, 82, 0.1);
+  border: 1px solid rgba(224, 82, 82, 0.25);
+}
+
+.ledger-balance-summary.jama {
+  background: rgba(39, 201, 123, 0.1);
+  border: 1px solid rgba(39, 201, 123, 0.25);
+}
+
+.ledger-balance-summary.clear {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+}
+
+.lbs-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lbs-amount {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.ledger-balance-summary.baki   .lbs-amount { color: var(--accent-red); }
+.ledger-balance-summary.jama   .lbs-amount { color: var(--accent-green); }
+.ledger-balance-summary.clear  .lbs-amount { color: var(--text-muted); }
+
+/* Ledger entries list */
+.ledger-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 38dvh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.ledger-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--sp-lg) 0;
+  font-size: 0.88rem;
+}
+
+/* Individual transaction entry */
+.ledger-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-md);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-raised);
+  transition: background 0.15s;
+}
+
+.ledger-entry:hover {
+  background: var(--bg-card);
+}
+
+.ledger-entry.tx-baki {
+  border-left: 3px solid var(--accent-red);
+}
+
+.ledger-entry.tx-jama {
+  border-left: 3px solid var(--accent-green);
+}
+
+.tx-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tx-type {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.tx-note {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-date {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.tx-amount {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.tx-baki .tx-amount { color: var(--accent-red); }
+.tx-jama .tx-amount { color: var(--accent-green); }
+
+/* ─── Settle Row (modal footer) ──────────────────────────────── */
+.settle-row {
+  display: flex;
+  gap: var(--sp-sm);
+  width: 100%;
+  align-items: center;
+}
+
+.settle-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+.settle-row .btn-danger,
+.settle-row .btn-success {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  min-width: 70px;
+}
+
+/* ─── Products Tab — Extra Styles ────────────────────────────── */
+#product-search-row {
+  margin-bottom: var(--sp-md);
+}
+
+.product-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--sp-xl) 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.alias-list {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.low-stock {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+#product-form-wrap {
+  margin-bottom: var(--sp-md);
+  animation: fadeSlideIn 0.2s ease;
+}
+
+.card-form {
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-default);
+  padding: var(--sp-lg);
+  margin-bottom: var(--sp-md);
+}
+
+.card-form h3 {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  margin-bottom: var(--sp-md);
+  letter-spacing: 0.01em;
+}
+
+.form-row.two-col {
+  display: flex;
+  gap: var(--sp-sm);
+  flex-direction: row;
+}
+
+.form-row.two-col > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-row.two-col label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Scrollbar for ledger entries ──────────────────────────── */
+.ledger-entries {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+.ledger-entries::-webkit-scrollbar { width: 4px; }
+.ledger-entries::-webkit-scrollbar-track { background: transparent; }
+.ledger-entries::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 99px; }

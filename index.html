@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <meta name="description" content="Smart Cashier - Voice-powered billing for your shop" />
+
+  <!-- PWA Meta Tags -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Smart Cashier" />
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Favicon & Icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+	
+  <title>Smart Cashier</title>
+
+  <!-- CSS Files -->
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/billing.css" />
+  <link rel="stylesheet" href="css/khata.css" />
+</head>
+
+<body>
+
+  <!-- ===================== APP WRAPPER ===================== -->
+  <div id="app">
+
+    <!-- ===== TOP HEADER ===== -->
+    <header id="app-header">
+      <div class="header-left">
+        <img src="icons/icon-192.png" alt="Logo" class="header-logo" onerror="this.style.display='none'" />
+        <div class="header-titles">
+          <h1 class="shop-name" id="shop-name-display">Smart Cashier</h1>
+          <span class="header-subtitle" id="current-date-time"></span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">
+          ⚙️
+        </button>
+        <div class="connection-status" id="connection-status" title="Connection status">
+          <span class="status-dot" id="status-dot"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===== TAB NAVIGATION ===== -->
+    <nav id="tab-nav" role="tablist" aria-label="Main navigation">
+      <button class="tab-btn active" data-tab="billing" role="tab" aria-selected="true" aria-controls="tab-billing">
+        🧾 <span>Billing</span>
+      </button>
+      <button class="tab-btn" data-tab="khata" role="tab" aria-selected="false" aria-controls="tab-khata">
+        📒 <span>Khata</span>
+      </button>
+      <button class="tab-btn" data-tab="products" role="tab" aria-selected="false" aria-controls="tab-products">
+        📦 <span>Products</span>
+      </button>
+      <button class="tab-btn" data-tab="bills" role="tab" aria-selected="false" aria-controls="tab-bills">
+        📊 <span>Bills</span>
+      </button>
+    </nav>
+
+    <!-- ===== TAB CONTENT AREA ===== -->
+    <main id="tab-content">
+
+      <!-- ─────────── TAB: BILLING ─────────── -->
+      <section id="tab-billing" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-billing">
+
+        <!-- Voice Input Bar -->
+        <div id="voice-bar">
+          <button id="voice-btn" class="voice-btn" aria-label="Start voice input" title="Tap and speak product names">
+            <span class="mic-icon">🎤</span>
+            <span class="voice-label" id="voice-label">Tap to Speak</span>
+          </button>
+          <div id="voice-transcript" class="voice-transcript" aria-live="polite" aria-label="Voice transcript"></div>
+        </div>
+
+        <!-- Manual Add Bar (fallback) -->
+        <div id="manual-bar">
+          <input
+            type="text"
+            id="manual-product-input"
+            placeholder="Type product name..."
+            autocomplete="off"
+            aria-label="Type product name"
+          />
+          <input
+            type="number"
+            id="manual-qty-input"
+            placeholder="Qty"
+            min="1"
+            value="1"
+            aria-label="Quantity"
+          />
+          <button id="manual-add-btn" aria-label="Add product">Add</button>
+        </div>
+
+        <!-- Cart Table -->
+        <div id="cart-wrapper">
+          <table id="cart-table" aria-label="Cart items">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cart-body">
+              <!-- Rows injected by billing.js -->
+            </tbody>
+          </table>
+          <div id="cart-empty" class="cart-empty" aria-live="polite">
+            🛒 Cart is empty — speak or type to add items
+          </div>
+        </div>
+
+        <!-- Cart Summary -->
+        <div id="cart-summary">
+          <div class="summary-row">
+            <span>Subtotal</span>
+            <span id="summary-subtotal">₹0.00</span>
+          </div>
+          <div class="summary-row discount-row">
+            <span>Discount</span>
+            <input type="number" id="discount-input" value="0" min="0" placeholder="0" aria-label="Discount amount" />
+          </div>
+          <div class="summary-row total-row">
+            <span>Total</span>
+            <span id="summary-total">₹0.00</span>
+          </div>
+        </div>
+
+        <!-- Khata Toggle (optional for select customers) -->
+        <div id="khata-toggle-row">
+          <label class="toggle-label">
+            <input type="checkbox" id="khata-toggle" aria-label="Khata customer toggle" />
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Khata Customer?</span>
+          </label>
+          <div id="khata-customer-select-wrap" class="hidden">
+            <select id="khata-customer-select" aria-label="Select khata customer">
+              <option value="">-- Select Customer --</option>
+              <!-- Options injected by khata.js -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div id="billing-actions">
+          <button id="clear-cart-btn" class="btn-secondary" aria-label="Clear cart">🗑 Clear</button>
+          <button id="generate-bill-btn" class="btn-primary" aria-label="Generate bill">🧾 Generate Bill</button>
+        </div>
+
+      </section>
+      <!-- end #tab-billing -->
+
+
+      <!-- ─────────── TAB: KHATA ─────────── -->
+      <section id="tab-khata" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-khata">
+
+        <!-- Add New Khata Customer -->
+        <div id="khata-add-customer">
+          <h2 class="section-title">Khata Accounts</h2>
+          <div class="add-customer-row">
+            <input
+              type="text"
+              id="new-customer-name"
+              placeholder="Customer name..."
+              aria-label="New customer name"
+            />
+            <input
+              type="tel"
+              id="new-customer-phone"
+              placeholder="Phone (optional)"
+              aria-label="Customer phone"
+            />
+            <button id="add-customer-btn" class="btn-primary" aria-label="Add customer">+ Add</button>
+          </div>
+        </div>
+
+        <!-- Khata Customer List -->
+        <div id="khata-list-wrapper">
+          <div id="khata-list">
+            <!-- Customer cards injected by khata.js -->
+          </div>
+          <div id="khata-empty" class="khata-empty">
+            📒 No khata accounts yet — add a regular customer above
+          </div>
+        </div>
+
+        <!-- Khata Detail Modal (shown when a customer is tapped) -->
+        <div id="khata-detail-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="khata-modal-title">
+          <div class="modal-backdrop" id="khata-modal-backdrop"></div>
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="khata-modal-title">Customer Ledger</h3>
+              <button class="modal-close-btn" id="khata-modal-close" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body" id="khata-modal-body">
+              <!-- Ledger entries injected by khata.js -->
+            </div>
+            <div class="modal-footer">
+              <div class="settle-row">
+                <input type="number" id="settle-amount" placeholder="Amount ₹" min="0" aria-label="Settlement amount" />
+                <button id="settle-baki-btn" class="btn-danger" aria-label="Add baki">+ Baki</button>
+                <button id="settle-jama-btn" class="btn-success" aria-label="Add jama">+ Jama</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+      <!-- end #tab-khata -->
+
+
+      <!-- ─────────── TAB: PRODUCTS ─────────── -->
+      <section id="tab-products" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-products">
+
+        <div class="section-header">
+          <h2 class="section-title">Product Master List</h2>
+          <button id="add-product-btn" class="btn-primary" aria-label="Add new product">+ Add Product</button>
+        </div>
+
+        <!-- Product Search -->
+        <div id="product-search-row">
+          <input
+            type="search"
+            id="product-search-input"
+            placeholder="Search products..."
+            aria-label="Search products"
+          />
+        </div>
+
+        <!-- Add / Edit Product Form -->
+        <div id="product-form-wrap" class="hidden">
+          <div id="product-form" class="card-form">
+            <h3 id="product-form-title">Add Product</h3>
+            <input type="hidden" id="product-edit-id" />
+            <div class="form-row">
+              <label for="product-name-input">Name</label>
+              <input type="text" id="product-name-input" placeholder="e.g. Parle-G" required aria-label="Product name" />
+            </div>
+            <div class="form-row">
+              <label for="product-aliases-input">Aliases (comma separated)</label>
+              <input type="text" id="product-aliases-input" placeholder="e.g. parleg, biscuit" aria-label="Product aliases" />
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label for="product-sell-price">Sell Price ₹</label>
+                <input type="number" id="product-sell-price" placeholder="0.00" min="0" step="0.01" required aria-label="Sell price" />
+              </div>
+              <div>
+                <label for="product-cost-price">Cost Price ₹</label>
+                <input type="number" id="product-cost-price" placeholder="0.00" min="0" step="0.01" aria-label="Cost price" />
+              </div>
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label for="product-unit">Unit</label>
+                <select id="product-unit" aria-label="Product unit">
+                  <option value="pcs">Pcs</option>
+                  <option value="kg">Kg</option>
+                  <option value="g">Gram</option>
+                  <option value="ltr">Litre</option>
+                  <option value="ml">ml</option>
+                  <option value="pkt">Packet</option>
+                  <option value="dozen">Dozen</option>
+                </select>
+              </div>
+              <div>
+                <label for="product-stock">Stock</label>
+                <input type="number" id="product-stock" placeholder="0" min="0" aria-label="Product stock" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button id="product-form-cancel" class="btn-secondary">Cancel</button>
+              <button id="product-form-save" class="btn-primary">Save Product</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Product List Table -->
+        <div id="product-list-wrapper">
+          <table id="product-table" aria-label="Product list">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Sell ₹</th>
+                <th>Cost ₹</th>
+                <th>Unit</th>
+                <th>Stock</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="product-table-body">
+              <!-- Rows injected by products.js -->
+            </tbody>
+          </table>
+          <div id="product-empty" class="product-empty">
+            📦 No products yet — add your first product above
+          </div>
+        </div>
+
+      </section>
+      <!-- end #tab-products -->
+
+
+      <!-- ─────────── TAB: BILLS ─────────── -->
+      <section id="tab-bills" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-bills">
+
+        <!-- Bill View (active bill after Generate) -->
+        <div id="bill-view-wrapper">
+
+          <div id="bill-receipt" class="receipt-card">
+            <div class="receipt-header">
+              <h2 class="receipt-shop-name" id="receipt-shop-name">Smart Cashier</h2>
+              <p class="receipt-meta" id="receipt-meta"></p>
+            </div>
+
+            <table class="receipt-table" id="receipt-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="receipt-body">
+                <!-- Rows injected by bill-print.js -->
+              </tbody>
+            </table>
+
+            <div class="receipt-totals" id="receipt-totals">
+              <!-- Subtotal, discount, total injected by bill-print.js -->
+            </div>
+
+            <!-- Profit Section (internal view only, not on printed bill) -->
+            <div class="profit-section" id="profit-section">
+              <h4 class="profit-title">📊 Profit Breakdown</h4>
+              <div id="profit-details">
+                <!-- Injected by bill-print.js -->
+              </div>
+            </div>
+
+            <!-- Khata Info (shown only if khata customer) -->
+            <div class="receipt-khata-info hidden" id="receipt-khata-info">
+              <!-- Injected by bill-print.js -->
+            </div>
+          </div>
+
+          <!-- Bill Action Buttons -->
+          <div id="bill-actions" class="hidden">
+            <button id="bill-print-btn" class="btn-secondary" aria-label="Print bill">🖨 Print</button>
+            <button id="bill-whatsapp-btn" class="btn-success" aria-label="Share on WhatsApp">💬 WhatsApp</button>
+            <button id="bill-new-btn" class="btn-primary" aria-label="New bill">+ New Bill</button>
+          </div>
+
+        </div>
+
+        <!-- Bills History -->
+        <div id="bills-history-wrapper">
+          <div class="section-header">
+            <h2 class="section-title">Bill History</h2>
+            <button id="clear-history-btn" class="btn-danger-outline" aria-label="Clear all history">Clear All</button>
+          </div>
+          <div id="bills-history-list">
+            <!-- History cards injected by bill-print.js -->
+          </div>
+          <div id="bills-history-empty" class="bills-empty">
+            📋 No bills generated yet
+          </div>
+        </div>
+
+      </section>
+      <!-- end #tab-bills -->
+
+    </main>
+    <!-- end #tab-content -->
+
+
+    <!-- ===== TOAST / SNACKBAR ===== -->
+    <div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+
+    <!-- ===== SETTINGS MODAL ===== -->
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <div class="modal-backdrop" id="settings-modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="settings-modal-title">⚙️ Settings</h3>
+          <button class="modal-close-btn" id="settings-modal-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <label for="settings-shop-name">Shop Name</label>
+            <input type="text" id="settings-shop-name" placeholder="Your Shop Name" aria-label="Shop name" />
+          </div>
+          <div class="form-row">
+            <label for="settings-shop-address">Shop Address</label>
+            <input type="text" id="settings-shop-address" placeholder="Address (for bill)" aria-label="Shop address" />
+          </div>
+          <div class="form-row">
+            <label for="settings-shop-phone">Phone Number</label>
+            <input type="tel" id="settings-shop-phone" placeholder="+91 XXXXXXXXXX" aria-label="Shop phone" />
+          </div>
+          <div class="form-row">
+            <label for="settings-voice-lang">Voice Language</label>
+            <select id="settings-voice-lang" aria-label="Voice recognition language">
+              <option value="hi-IN">Hindi (hi-IN) — Recommended</option>
+              <option value="en-IN">English India (en-IN)</option>
+              <option value="en-US">English US (en-US)</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="settings-currency">Currency Symbol</label>
+            <select id="settings-currency" aria-label="Currency symbol">
+              <option value="₹">₹ Rupee</option>
+              <option value="$">$ Dollar</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="settings-save-btn" class="btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ===== CONFIRM DIALOG (for voice match confirmation) ===== -->
+    <div id="confirm-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h3 id="confirm-dialog-title">Confirm Product</h3>
+        </div>
+        <div class="modal-body" id="confirm-dialog-body">
+          <!-- Message injected by voice.js -->
+        </div>
+        <div class="modal-footer">
+          <button id="confirm-dialog-no" class="btn-secondary">No</button>
+          <button id="confirm-dialog-yes" class="btn-primary">Yes, Add</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <!-- end #app -->
+
+
+  <!-- ===================== JS FILES ===================== -->
+  <!--
+    Load order matters:
+    1. storage.js   — must be first (all others depend on it)
+    2. products.js  — product list CRUD
+    3. khata.js     — khata ledger logic
+    4. billing.js   — cart logic, totals, profit
+    5. voice.js     — mic + speech parser (needs products)
+    6. bill-print.js — bill generation, WhatsApp, history
+    7. app.js       — last: init + tab routing (ties everything together)
+  -->
+  <script src="js/storage.js"></script>
+  <script src="js/products.js"></script>
+  <script src="js/khata.js"></script>
+  <script src="js/billing.js"></script>
+  <script src="js/voice.js"></script>
+  <script src="js/bill-print.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('[SW] Registered:', reg.scope))
+          .catch(err => console.warn('[SW] Registration failed:', err));
+      });
+    }
+  </script>
+
+</body>
+</html>

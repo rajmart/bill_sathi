@@ -1,0 +1,603 @@
+/* ═══════════════════════════════════════════════════════════════
+   billing.css — Smart Cashier PWA
+   Voice bar, cart table, summary, billing actions, receipt
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Voice Bar ──────────────────────────────────────────────── */
+#voice-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-md) var(--sp-md) var(--sp-sm);
+  margin: 0 calc(-1 * var(--sp-md));
+  margin-top: calc(-1 * var(--sp-md));
+  background: linear-gradient(180deg, rgba(245,166,35,0.06) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--sp-md);
+}
+
+.voice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #2a2010, #1a1500);
+  border: 2.5px solid var(--accent-primary);
+  box-shadow:
+    0 0 0 0 rgba(245,166,35,0),
+    0 4px 24px rgba(245,166,35,0.2),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s;
+  position: relative;
+  overflow: visible;
+}
+
+.voice-btn:hover {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 6px rgba(245,166,35,0.1),
+    0 4px 28px rgba(245,166,35,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.voice-btn:active {
+  transform: scale(0.96);
+}
+
+.voice-btn.listening {
+  border-color: var(--accent-red);
+  background: radial-gradient(circle at 35% 35%, #2a1010, #1a0808);
+  box-shadow:
+    0 0 0 8px rgba(224,82,82,0.12),
+    0 0 0 16px rgba(224,82,82,0.05),
+    0 4px 28px rgba(224,82,82,0.3);
+  animation: pulse-ring 1.4s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(224,82,82,0.4), 0 4px 28px rgba(224,82,82,0.3); }
+  60%  { box-shadow: 0 0 0 14px rgba(224,82,82,0), 0 4px 28px rgba(224,82,82,0.3); }
+  100% { box-shadow: 0 0 0 14px rgba(224,82,82,0), 0 4px 28px rgba(224,82,82,0.3); }
+}
+
+.mic-icon {
+  font-size: 1.8rem;
+  display: block;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(245,166,35,0.5));
+}
+
+.voice-btn.listening .mic-icon {
+  filter: drop-shadow(0 0 8px rgba(224,82,82,0.7));
+  animation: mic-bounce 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes mic-bounce {
+  from { transform: scale(1); }
+  to   { transform: scale(1.12); }
+}
+
+.voice-label {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voice-btn.listening .voice-label {
+  color: var(--accent-red);
+}
+
+/* Voice transcript bubble */
+.voice-transcript {
+  width: 100%;
+  min-height: 28px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 5px var(--sp-md);
+  border-radius: var(--r-lg);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.voice-transcript.interim {
+  color: var(--accent-primary);
+  border-color: rgba(245,166,35,0.25);
+  background: rgba(245,166,35,0.05);
+  font-style: normal;
+}
+
+.voice-transcript.final {
+  color: var(--accent-green);
+  border-color: rgba(39,201,123,0.3);
+  background: rgba(39,201,123,0.06);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* ─── Manual Add Bar ──────────────────────────────────────────── */
+#manual-bar {
+  display: flex;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-md);
+}
+
+#manual-product-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  padding: 9px 12px;
+}
+
+#manual-qty-input {
+  width: 60px;
+  flex-shrink: 0;
+  text-align: center;
+  padding: 9px 8px;
+}
+
+#manual-add-btn {
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 9px 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.03em;
+}
+
+#manual-add-btn:hover  { background: var(--bg-card); border-color: var(--accent-primary); }
+#manual-add-btn:active { transform: scale(0.96); }
+
+/* ─── Cart ───────────────────────────────────────────────────── */
+#cart-wrapper {
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  margin-bottom: var(--sp-md);
+}
+
+#cart-table thead th {
+  background: var(--bg-raised);
+  padding: 7px 8px;
+}
+
+#cart-table thead th:first-child { padding-left: 12px; }
+#cart-table thead th:last-child  { width: 36px; }
+
+#cart-table tbody td {
+  padding: 8px 8px;
+}
+#cart-table tbody td:first-child { padding-left: 12px; font-size: 0.78rem; color: var(--text-muted); }
+
+.item-name {
+  display: block;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.item-unit {
+  display: inline-block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border-radius: var(--r-pill);
+  padding: 1px 6px;
+  margin-top: 2px;
+  border: 1px solid var(--border-subtle);
+}
+
+.qty-input {
+  width: 54px !important;
+  padding: 5px 6px !important;
+  text-align: center;
+  font-size: 0.85rem !important;
+  border-radius: var(--r-sm) !important;
+  font-weight: 600;
+}
+
+.cart-empty {
+  text-align: center;
+  padding: var(--sp-xl) var(--sp-md);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ─── Cart Summary ───────────────────────────────────────────── */
+#cart-summary {
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+  padding: var(--sp-md);
+  margin-bottom: var(--sp-md);
+}
+
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.summary-row + .summary-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.discount-row {
+  gap: var(--sp-sm);
+}
+
+.discount-row span {
+  flex-shrink: 0;
+}
+
+.discount-row #discount-input {
+  width: 100px;
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.total-row {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  padding-top: 10px !important;
+}
+
+#summary-total {
+  color: var(--accent-primary);
+  font-size: 1.25rem;
+}
+
+/* ─── Khata Toggle Row ───────────────────────────────────────── */
+#khata-toggle-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+  padding: var(--sp-md);
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: var(--sp-md);
+  transition: border-color 0.2s;
+}
+
+#khata-toggle-row:has(#khata-toggle:checked) {
+  border-color: rgba(245,166,35,0.35);
+  background: rgba(245,166,35,0.04);
+}
+
+#khata-customer-select-wrap {
+  animation: fadeSlideIn 0.2s ease;
+}
+
+#khata-customer-select {
+  font-size: 0.875rem;
+  padding: 9px 32px 9px 12px;
+}
+
+/* ─── Billing Action Buttons ──────────────────────────────────── */
+#billing-actions {
+  display: flex;
+  gap: var(--sp-sm);
+}
+
+#clear-cart-btn   { flex: 0 0 auto; }
+#generate-bill-btn { flex: 1; font-size: 1rem; padding: 13px 20px; }
+
+/* ─── Bill Receipt ───────────────────────────────────────────── */
+.receipt-card {
+  background: var(--bg-surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  margin-bottom: var(--sp-md);
+}
+
+.receipt-header {
+  background: linear-gradient(135deg, var(--bg-raised), var(--bg-card));
+  padding: var(--sp-lg) var(--sp-lg) var(--sp-md);
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.receipt-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at top, rgba(245,166,35,0.08), transparent 60%);
+  pointer-events: none;
+}
+
+.receipt-shop-name {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.receipt-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.receipt-table {
+  border-radius: 0;
+}
+
+.receipt-table thead th {
+  font-size: 0.68rem;
+  padding: 7px var(--sp-md);
+}
+
+.receipt-table thead th:not(:first-child) { text-align: right; }
+
+.receipt-table tbody td { padding: 9px var(--sp-md); }
+.rx-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.rx-unit {
+  display: inline-block;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* Receipt totals block */
+.receipt-totals {
+  padding: var(--sp-md) var(--sp-lg);
+  border-top: 1px dashed var(--border-default);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rx-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.rx-total-row.discount {
+  color: var(--accent-red);
+}
+
+.rx-total-row.grand-total {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  padding-top: 8px;
+  border-top: 1px solid var(--border-default);
+  margin-top: 4px;
+}
+
+.rx-total-row.grand-total span:last-child {
+  color: var(--accent-primary);
+}
+
+/* ─── Profit Section ─────────────────────────────────────────── */
+.profit-section {
+  border-top: 1px dashed var(--border-default);
+  padding: var(--sp-md) var(--sp-lg);
+  background: rgba(155,107,250,0.04);
+}
+
+.profit-title {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-purple);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-sm);
+}
+
+.profit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  padding: 4px 0;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pr-name { color: var(--text-secondary); }
+.pr-amt  { font-weight: 600; font-variant-numeric: tabular-nums; }
+.pr-amt.pos { color: var(--accent-green); }
+.pr-amt.neg { color: var(--accent-red); }
+
+.profit-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--sp-sm);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.profit-pos {
+  color: var(--accent-green) !important;
+  font-size: 1rem;
+}
+
+.profit-neg {
+  color: var(--accent-red) !important;
+}
+
+/* ─── Khata Info on Receipt ──────────────────────────────────── */
+.receipt-khata-info {
+  padding: var(--sp-sm) var(--sp-lg);
+  background: rgba(245,166,35,0.05);
+  border-top: 1px dashed var(--border-default);
+}
+
+.rx-khata-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.83rem;
+  padding: 4px 0;
+  color: var(--text-secondary);
+}
+
+.rx-khata-mode {
+  background: rgba(245,166,35,0.15);
+  color: var(--accent-primary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+}
+
+/* ─── Bill Actions ───────────────────────────────────────────── */
+#bill-actions {
+  display: flex;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-lg);
+}
+
+#bill-print-btn    { flex: 0 0 auto; }
+#bill-whatsapp-btn { flex: 1; }
+#bill-new-btn      { flex: 0 0 auto; }
+
+/* ─── Bills History ──────────────────────────────────────────── */
+#bills-history-wrapper .section-header {
+  margin-top: var(--sp-md);
+}
+
+#bills-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+
+.history-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  padding: var(--sp-md);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+
+.history-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
+  border-radius: 0 2px 2px 0;
+}
+
+.history-card:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-default);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.history-card:active {
+  transform: scale(0.99);
+}
+
+.hc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.hc-bill-num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--accent-primary);
+}
+
+.hc-date {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.hc-mid {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  margin-bottom: 5px;
+}
+
+.hc-items {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.hc-khata {
+  font-size: 0.72rem;
+  background: rgba(245,166,35,0.12);
+  color: var(--accent-primary);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+}
+
+.hc-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hc-total {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.hc-profit {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.hc-profit.pos { color: var(--accent-green); }
+.hc-profit.neg { color: var(--accent-red); }
+
+.bills-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--sp-xl) 0;
+  font-size: 0.9rem;
+}

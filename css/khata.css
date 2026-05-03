@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
-   khata.css — Smart Cashier PWA (Bill Sathi)
-   Ledger / Khata account styles
+   khata.css — Bill Sathi PWA
+   Calm Red & White Theme
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─── Add Customer Row ───────────────────────────────────────── */
@@ -59,6 +59,7 @@
   position: relative;
   overflow: hidden;
   user-select: none;
+  box-shadow: var(--shadow-sm);
 }
 
 /* Accent left bar */
@@ -69,9 +70,9 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(to bottom, var(--accent-primary), var(--accent-secondary));
+  background: var(--accent-primary);
   border-radius: 0 2px 2px 0;
-  opacity: 0.6;
+  opacity: 0.5;
   transition: opacity 0.15s;
 }
 
@@ -79,7 +80,7 @@
   background: var(--bg-raised);
   border-color: var(--border-default);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .khata-card:hover::before {
@@ -104,17 +105,16 @@
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: var(--text-inverse);
+  background: var(--accent-primary);
+  color: #ffffff;
   font-family: var(--font-display);
   font-size: 1.1rem;
-  font-weight: 800;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 10px rgba(245, 166, 35, 0.3);
-  letter-spacing: -0.01em;
+  box-shadow: 0 2px 10px rgba(176,48,48,0.25);
 }
 
 .khata-info {
@@ -151,7 +151,7 @@
 }
 
 .khata-balance {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 700;
   padding: 4px 10px;
@@ -160,19 +160,19 @@
 }
 
 .khata-balance.baki {
-  background: rgba(224, 82, 82, 0.12);
+  background: rgba(192,57,43,0.1);
   color: var(--accent-red);
-  border: 1px solid rgba(224, 82, 82, 0.2);
+  border: 1px solid rgba(192,57,43,0.2);
 }
 
 .khata-balance.jama {
-  background: rgba(39, 201, 123, 0.12);
+  background: rgba(45,122,79,0.1);
   color: var(--accent-green);
-  border: 1px solid rgba(39, 201, 123, 0.2);
+  border: 1px solid rgba(45,122,79,0.2);
 }
 
 .khata-balance.clear {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-raised);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
 }
@@ -196,8 +196,8 @@
 }
 
 .khata-delete-btn:hover {
-  background: rgba(224, 82, 82, 0.12);
-  border-color: rgba(224, 82, 82, 0.3);
+  background: rgba(192,57,43,0.1);
+  border-color: rgba(192,57,43,0.25);
   color: var(--accent-red);
 }
 
@@ -211,21 +211,20 @@
   padding: var(--sp-md) var(--sp-lg);
   border-radius: var(--r-lg);
   margin-bottom: var(--sp-md);
-  font-family: var(--font-display);
 }
 
 .ledger-balance-summary.baki {
-  background: rgba(224, 82, 82, 0.1);
-  border: 1px solid rgba(224, 82, 82, 0.25);
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.2);
 }
 
 .ledger-balance-summary.jama {
-  background: rgba(39, 201, 123, 0.1);
-  border: 1px solid rgba(39, 201, 123, 0.25);
+  background: rgba(45,122,79,0.08);
+  border: 1px solid rgba(45,122,79,0.2);
 }
 
 .ledger-balance-summary.clear {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-raised);
   border: 1px solid var(--border-subtle);
 }
 
@@ -238,9 +237,10 @@
 }
 
 .lbs-amount {
+  font-family: var(--font-display);
   font-size: 1.25rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .ledger-balance-summary.baki   .lbs-amount { color: var(--accent-red); }
@@ -298,7 +298,7 @@
 }
 
 .tx-type {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-primary);
@@ -321,10 +321,9 @@
 .tx-amount {
   font-family: var(--font-display);
   font-size: 0.95rem;
-  font-weight: 800;
+  font-weight: 700;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
 }
 
 .tx-baki .tx-amount { color: var(--accent-red); }
@@ -387,6 +386,7 @@
   border: 1px solid var(--border-default);
   padding: var(--sp-lg);
   margin-bottom: var(--sp-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .card-form h3 {
@@ -395,7 +395,6 @@
   font-weight: 700;
   color: var(--accent-primary);
   margin-bottom: var(--sp-md);
-  letter-spacing: 0.01em;
 }
 
 .form-row.two-col {

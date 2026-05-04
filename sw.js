@@ -6,8 +6,8 @@
  * Strategy: Cache-first for static assets, network-first for data.
  */
 
-const CACHE_NAME   = 'bill-sathi-v6';
-const RUNTIME_CACHE = 'bill-sathi-runtime-v6';
+const CACHE_NAME    = 'bill-sathi-v7';   // bumped from v4 to purge stale files
+const RUNTIME_CACHE = 'bill-sathi-runtime-v7';
 
 // ─── Assets to cache on install ──────────────────────────────────────────────
 const PRECACHE_ASSETS = [
@@ -62,12 +62,10 @@ self.addEventListener('activate', event => {
 
 // ─── Fetch — cache-first strategy ────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  // Only handle GET requests on same origin
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Skip cross-origin requests (Google Fonts CDN is runtime-cached below)
   if (url.origin !== location.origin && !url.hostname.includes('fonts.')) {
     return;
   }
@@ -97,7 +95,6 @@ self.addEventListener('fetch', event => {
 
       return fetch(event.request)
         .then(response => {
-          // Cache successful responses
           if (response && response.status === 200 && response.type === 'basic') {
             const toCache = response.clone();
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, toCache));
@@ -105,7 +102,6 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(() => {
-          // Fallback to index.html for navigation requests
           if (event.request.mode === 'navigate') {
             return caches.match('./index.html');
           }

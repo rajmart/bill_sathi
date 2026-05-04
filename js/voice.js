@@ -1,17 +1,25 @@
 'use strict';
 
 /**
- * voice.js — Bill Sathi
+ * voice.js — Bill Sathi v1.1
  * Smart voice input with intent detection.
+ *
+ * FIXES in v1.1:
+ *  - Press & Hold mic (no toggle confusion)
+ *  - OVERWRITE transcript (never append) → no duplicate words
+ *  - Tighter fuzzy match threshold (0.30 confident, 0.45 uncertain)
+ *  - Single recognition instance per hold — no stale state
+ *  - Confirm dialog: sequential, one at a time, clean clone
+ *  - Intent detection: billing / inventory / khata bill / khata payment / open account
  *
  * Supported intents:
  *  1. BILLING        (default) — "amul gold 4 pieces, tea special 5"
  *  2. INVENTORY                — "add to inventory amul gold 20 pieces"
  *  3. KHATA BILL               — "abbasbhai account, amul gold 4 and tea special one"
- *  4. KHATA PAYMENT            — "abbasbhai given 200 rupees" / "abbasbhai ne 500 diya"
- *  5. OPEN ACCOUNT             — "open account of abbasbhai" / "abbasbhai ka khata kholo"
+ *  4. KHATA PAYMENT            — "abbasbhai given 200 rupees"
+ *  5. OPEN ACCOUNT             — "open account of abbasbhai"
  *
- * Mic behaviour: PRESS AND HOLD to listen, release to process.
+ * Mic: PRESS AND HOLD → release to process.
  * Works on mobile (touchstart/touchend) and desktop (mousedown/mouseup).
  *
  * Depends on: storage.js, products.js, billing.js, khata.js, app.js
@@ -27,25 +35,29 @@ const Voice = (() => {
   let _isHolding    = false;
   let _holdTimer    = null;
   let _transcript   = '';
-  let _touchActive  = false;   // guard: prevents mousedown firing after touchstart
+  let _touchActive  = false;   // guard: prevents mousedown after touchstart on Android
 
-  const MIN_HOLD_MS = 120;
+  const MIN_HOLD_MS = 120;     // min hold time before mic starts
 
-  // ─── Number Word Map ─────────────────────────────────────────────
+  // ─── Number Word Map (Hindi + English + Hinglish) ────────────────
   const NUMBER_WORDS = {
+    // Hindi
     'ek':1,'do':2,'teen':3,'char':4,'paanch':5,
     'chhe':6,'chah':6,'saat':7,'aath':8,'nau':9,'das':10,
     'gyarah':11,'barah':12,'tera':13,'chaudah':14,'pandrah':15,
     'solah':16,'satrah':17,'atharah':18,'unnis':19,'bees':20,
     'pachees':25,'tees':30,'chalees':40,'pachaas':50,
     'saath':70,'assi':80,'nabbe':90,'sau':100,
+    // English
     'one':1,'two':2,'three':3,'four':4,'five':5,
     'six':6,'seven':7,'eight':8,'nine':9,'ten':10,
     'eleven':11,'twelve':12,'thirteen':13,'fourteen':14,'fifteen':15,
     'sixteen':16,'seventeen':17,'eighteen':18,'nineteen':19,'twenty':20,
     'thirty':30,'forty':40,'fifty':50,'sixty':60,'seventy':70,'eighty':80,'ninety':90,
     'hundred':100,'dozen':12,
+    // Spoken shortcuts
     'ik':1,'doh':2,'tin':3,'pach':5,'atha':8,
+    // currency (ignored as numbers)
     'rs':null,'rupees':null,'rupee':null,'rupe':null,
   };
 
@@ -56,7 +68,7 @@ const Voice = (() => {
     'packet','packets','pkt','pkts','box','boxes',
     'dozen','dozens','bottle','bottles','meter','meters',
     'nag','nug','tukda','tukde','kille',
-    // NOTE: 'g' intentionally excluded — it breaks "parle g"
+    // intentionally NOT 'g' — breaks "parle g"
   ]);
 
   const STOP_WORDS = new Set([
@@ -66,7 +78,7 @@ const Voice = (() => {
     'add','karo','lagao','dalo','the','a','an',
   ]);
 
-  // ─── Intent triggers ─────────────────────────────────────────────
+  // ─── Intent Trigger Lists ─────────────────────────────────────────
 
   const INVENTORY_TRIGGERS = [
     'add to inventory','inventory mein add','stock mein add',
@@ -90,7 +102,7 @@ const Voice = (() => {
     'given','paid','payment','jama',
     'diya','bheja','bheji','aaya','aya',
     'received','mila','mili','wapas','returned',
-  ].sort((a, b) => b.length - a.length);
+  ].sort((a, b) => b.length - a.length);   // longest first for greedy match
 
   const KHATA_BILL_TRIGGERS = [
     'ka khata','ke khata','ka account','ke account',
@@ -111,8 +123,8 @@ const Voice = (() => {
 
     _recognition = new SpeechRecognition();
     _recognition.lang            = Storage.getSettings().voiceLang || 'hi-IN';
-    _recognition.continuous      = false;   // single utterance — no duplicate onresult events
-    _recognition.interimResults  = true;    // show live text while speaking
+    _recognition.continuous      = false;   // SINGLE utterance — prevents duplicate onresult events
+    _recognition.interimResults  = true;    // live preview while speaking
     _recognition.maxAlternatives = 1;
 
     _recognition.onstart = () => {
@@ -123,6 +135,9 @@ const Voice = (() => {
     };
 
     _recognition.onresult = e => {
+      // ── KEY FIX: OVERWRITE, never append ────────────────────────
+      // Collecting ALL results fresh each time prevents duplicate words
+      // that occur when onresult fires multiple times.
       let interimText = '';
       let finalText   = '';
 
@@ -132,12 +147,12 @@ const Voice = (() => {
         else                       interimText += t;
       }
 
-      // Show live preview
-      if (interimText && !finalText) _setTranscript(interimText, 'interim');
+      if (interimText && !finalText) {
+        _setTranscript(interimText, 'interim');
+      }
 
-      // OVERWRITE never append — prevents duplicate words across multiple onresult events
       if (finalText) {
-        _transcript = finalText.trim();
+        _transcript = finalText.trim();   // OVERWRITE — never append
         _setTranscript(_transcript, 'final');
       }
     };
@@ -165,10 +180,10 @@ const Voice = (() => {
     return true;
   }
 
-  // ─── Press & Hold ────────────────────────────────────────────────
+  // ─── Press & Hold Handlers ────────────────────────────────────────
 
   function _onTouchStart(e) {
-    e.preventDefault();       // blocks the ghost mousedown/mouseup that follows on Android
+    e.preventDefault();       // block the ghost mousedown/mouseup on Android
     _touchActive = true;
     _beginHold();
   }
@@ -179,28 +194,29 @@ const Voice = (() => {
     _endHold();
   }
 
-  function _onMouseDown(e) {
-    if (_touchActive) return; // touch already handled this — skip to avoid double-fire
+  function _onMouseDown() {
+    if (_touchActive) return; // touch already handled this
     _beginHold();
   }
 
-  function _onMouseUp(e) {
+  function _onMouseUp() {
     if (_touchActive) return;
     _endHold();
   }
 
-  function _onMouseLeave(e) {
+  function _onMouseLeave() {
     if (_isHolding && !_touchActive) _endHold();
   }
 
   function _beginHold() {
-    // Always create a fresh recognition instance — clears all stale state
+    // Always create a FRESH recognition instance — clears all stale state
     _recognition = null;
     if (!_initRecognition()) return;
 
     _isHolding  = true;
     _transcript = '';
 
+    // Small delay before starting — avoids accidental taps
     _holdTimer = setTimeout(() => {
       if (!_isHolding) return;
       try { _recognition.start(); }
@@ -227,11 +243,13 @@ const Voice = (() => {
   function detectIntent(raw) {
     const lower = raw.toLowerCase().trim();
 
+    // 1. Inventory intent
     for (const trigger of INVENTORY_TRIGGERS) {
       if (lower.includes(trigger))
         return { intent: 'inventory', rest: lower.replace(trigger, '').trim() };
     }
 
+    // 2. Open account intent (prefix style)
     for (const prefix of OPEN_ACCOUNT_PREFIXES) {
       if (lower.startsWith(prefix)) {
         const customerName = lower.slice(prefix.length).replace(/^[\s,of]+/, '').trim();
@@ -239,6 +257,7 @@ const Voice = (() => {
       }
     }
 
+    // 3. Open account intent (suffix style: "abbasbhai ka khata kholo")
     if (OPEN_ACCOUNT_SUFFIX_RE.test(lower)) {
       const customerName = lower
         .replace(OPEN_ACCOUNT_SUFFIX_RE, '')
@@ -247,12 +266,15 @@ const Voice = (() => {
       if (customerName.length > 1) return { intent: 'open_account', customerName };
     }
 
+    // 4. Khata payment intent
     const payResult = _detectPaymentIntent(lower);
     if (payResult) return payResult;
 
+    // 5. Khata bill intent
     const khataResult = _detectKhataBillIntent(lower);
     if (khataResult) return khataResult;
 
+    // 6. Default: billing
     return { intent: 'billing', rest: lower };
   }
 
@@ -297,6 +319,16 @@ const Voice = (() => {
   //  PRODUCT LIST PARSER
   // ═══════════════════════════════════════════════════════════════════
 
+  /**
+   * Parse transcript into [{rawName, qty}] entries.
+   * Handles comma-separated segments, qty-first and name-first patterns.
+   *
+   * Examples:
+   *   "amul gold four pieces"     → [{rawName:"amul gold", qty:4}]
+   *   "four amul gold"            → [{rawName:"amul gold", qty:4}]
+   *   "tea two and biscuit one"   → [{rawName:"tea",qty:2},{rawName:"biscuit",qty:1}]
+   *   "gold 4 tea 2"              → [{rawName:"gold",qty:4},{rawName:"tea",qty:2}]
+   */
   function parseProductList(text) {
     const cleaned = text.toLowerCase()
       .replace(/[,،;।]/g, ',')
@@ -310,16 +342,6 @@ const Voice = (() => {
     return results;
   }
 
-  /**
-   * Parse one comma-separated segment into [{rawName, qty}] entries.
-   *
-   * Handles:
-   *   "amul gold four pieces"      → [{rawName:"amul gold", qty:4}]
-   *   "four amul gold"             → [{rawName:"amul gold", qty:4}]
-   *   "tea two and biscuit one"    → [{rawName:"tea",qty:2},{rawName:"biscuit",qty:1}]
-   *   "gold 4 tea 2"               → [{rawName:"gold",qty:4},{rawName:"tea",qty:2}]
-   *   "amul gold 4 amul taaza 2"   → [{rawName:"amul gold",qty:4},{rawName:"amul taaza",qty:2}]
-   */
   function _parseSegment(seg) {
     const tokens = seg.split(' ').filter(Boolean);
     const results = [];
@@ -334,7 +356,7 @@ const Voice = (() => {
       const num = _parseNumber(tok);
 
       if (num !== null) {
-        // ── QTY-FIRST: "4 amul gold" ──
+        // ── QTY-FIRST: "4 amul gold" ──────────────────────────────
         i++;
         const nameToks = [];
         while (i < tokens.length) {
@@ -348,7 +370,7 @@ const Voice = (() => {
         if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty: num });
 
       } else {
-        // ── NAME-FIRST: "amul gold 4 pieces" ──
+        // ── NAME-FIRST: "amul gold 4 pieces" ──────────────────────
         const nameToks = [];
         while (i < tokens.length) {
           const t = tokens[i];
@@ -415,11 +437,15 @@ const Voice = (() => {
     }
   }
 
+  // ─── Billing ─────────────────────────────────────────────────────
+
   function _handleBilling(rest) {
     const parsed = parseProductList(rest);
     if (!parsed.length) { _toast('No products understood — try again', 'error'); return; }
     _matchAndAddToCart(parsed);
   }
+
+  // ─── Inventory ───────────────────────────────────────────────────
 
   function _handleInventory(rest) {
     const parsed = parseProductList(rest);
@@ -444,6 +470,8 @@ const Voice = (() => {
     if (unknown.length) _toast(`Not found: ${unknown.join(', ')}`, 'error');
   }
 
+  // ─── Open Account ─────────────────────────────────────────────────
+
   function _handleOpenAccount(customerName) {
     const customers = Storage.getAllKhata();
     if (!customers.length) { _toast('No khata accounts yet', 'error'); return; }
@@ -459,6 +487,8 @@ const Voice = (() => {
     }, 150);
   }
 
+  // ─── Khata Bill ───────────────────────────────────────────────────
+
   function _handleKhataBill(customerName, rest) {
     const customers = Storage.getAllKhata();
     if (!customers.length) { _toast('No khata customers found', 'error'); return; }
@@ -468,6 +498,8 @@ const Voice = (() => {
     if (!parsed.length) { _toast('No products understood for khata bill', 'error'); return; }
     _showKhataConfirm(custMatch, parsed);
   }
+
+  // ─── Khata Payment ────────────────────────────────────────────────
 
   function _handleKhataPayment(customerName, amount) {
     const customers = Storage.getAllKhata();
@@ -490,7 +522,7 @@ const Voice = (() => {
     );
   }
 
-  // ─── Khata bill confirm ───────────────────────────────────────────
+  // ─── Khata Bill Confirm ───────────────────────────────────────────
 
   function _showKhataConfirm(customer, parsedItems) {
     const curr    = Storage.getSettings().currency || '₹';
@@ -526,7 +558,7 @@ const Voice = (() => {
     });
   }
 
-  // ─── Generic confirm dialog ───────────────────────────────────────
+  // ─── Generic Confirm Dialog ───────────────────────────────────────
 
   function _showConfirmDialog(title, bodyHtml, confirmLabel, onConfirm) {
     const dialog = $('confirm-dialog');
@@ -536,28 +568,31 @@ const Voice = (() => {
     $('confirm-dialog-body').innerHTML    = bodyHtml;
     dialog.classList.remove('hidden');
 
+    // Clone buttons to wipe all previous listeners
     const yesBtn = $('confirm-dialog-yes');
     const noBtn  = $('confirm-dialog-no');
-    yesBtn.textContent = confirmLabel;
-    noBtn.textContent  = 'Cancel';
-
     const newYes = yesBtn.cloneNode(true);
     const newNo  = noBtn.cloneNode(true);
     yesBtn.parentNode.replaceChild(newYes, yesBtn);
     noBtn.parentNode.replaceChild(newNo, noBtn);
 
+    newYes.textContent = confirmLabel;
+    newNo.textContent  = 'Cancel';
+
     const _close = () => {
       dialog.classList.add('hidden');
-      $('confirm-dialog-title').textContent = 'Confirm Product';
-      $('confirm-dialog-yes').textContent   = 'Yes, Add';
-      $('confirm-dialog-no').textContent    = 'No';
+      // Reset labels for next use
+      $('confirm-dialog-yes').textContent = 'Yes, Add';
+      $('confirm-dialog-no').textContent  = 'No';
     };
 
     newYes.addEventListener('click', () => { _close(); onConfirm(); });
     newNo.addEventListener('click',  _close);
   }
 
-  // ─── Match products & add to cart ────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  //  MATCH PRODUCTS & ADD TO CART
+  // ═══════════════════════════════════════════════════════════════════
 
   let _pendingMatches = [];
   let _confirmIndex   = 0;
@@ -567,12 +602,24 @@ const Voice = (() => {
       ...item, match: Products.findBestMatch(item.rawName),
     }));
 
-    const confident = toProcess.filter(i => i.match && i.match.score < 0.25);
-    const uncertain = toProcess.filter(i => !i.match || i.match.score >= 0.25);
+    // ── TIGHTER THRESHOLDS (v1.1 fix) ────────────────────────────
+    // score < 0.30 → add immediately (high confidence)
+    // score 0.30–0.45 → ask user to confirm
+    // score > 0.45 → reject (too different)
+    const confident = toProcess.filter(i => i.match && i.match.score < 0.30);
+    const uncertain = toProcess.filter(i => i.match && i.match.score >= 0.30 && i.match.score < 0.45);
+    const rejected  = toProcess.filter(i => !i.match || i.match.score >= 0.45);
 
+    // Add confident items silently
     confident.forEach(item => Billing.addToCart(item.match.product.id, item.qty));
     if (confident.length) _toast(`${confident.length} item${confident.length > 1 ? 's' : ''} added ✓`);
 
+    // Notify about rejected items
+    if (rejected.length) {
+      _toast(`Not found: ${rejected.map(i => i.rawName).join(', ')}`, 'error');
+    }
+
+    // Queue uncertain items for confirm dialog
     if (uncertain.length) {
       _pendingMatches = uncertain;
       _confirmIndex   = 0;
@@ -581,38 +628,39 @@ const Voice = (() => {
   }
 
   function _processNextConfirm() {
-    if (_confirmIndex >= _pendingMatches.length) { _pendingMatches = []; return; }
+    if (_confirmIndex >= _pendingMatches.length) {
+      _pendingMatches = [];
+      return;
+    }
 
     const item = _pendingMatches[_confirmIndex];
-    const body = item.match
-      ? `<p>You said: <strong>"${_esc(item.rawName)}"</strong> × ${item.qty}</p>
-         <p>Did you mean: <strong>${_esc(item.match.product.name)}</strong>?</p>
-         <p class="match-score">Confidence: ${Math.round((1 - item.match.score) * 100)}%</p>`
-      : `<p>You said: <strong>"${_esc(item.rawName)}"</strong> × ${item.qty}</p>
-         <p>⚠️ No product found. Add as custom item?</p>`;
+    const body = `<p>You said: <strong>"${_esc(item.rawName)}"</strong> × ${item.qty}</p>
+                  <p>Did you mean: <strong>${_esc(item.match.product.name)}</strong>?</p>
+                  <p class="match-score">Confidence: ${Math.round((1 - item.match.score) * 100)}%</p>`;
 
     _showConfirmDialog('Confirm Product', body, 'Yes, Add', () => {
-      if (item.match) Billing.addToCart(item.match.product.id, item.qty);
-      else            Billing.addToCart(null, item.qty, item.rawName, 0);
+      Billing.addToCart(item.match.product.id, item.qty);
       _confirmIndex++;
       _processNextConfirm();
     });
 
-    const noBtn = $('confirm-dialog-no');
-    const newNo = noBtn.cloneNode(true);
+    // Override No button to skip (not close entirely)
+    const noBtn  = $('confirm-dialog-no');
+    const newNo  = noBtn.cloneNode(true);
     noBtn.parentNode.replaceChild(newNo, noBtn);
-    newNo.textContent = 'No';
+    newNo.textContent = 'Skip';
     newNo.addEventListener('click', () => {
       $('confirm-dialog').classList.add('hidden');
-      $('confirm-dialog-title').textContent = 'Confirm Product';
-      $('confirm-dialog-yes').textContent   = 'Yes, Add';
-      $('confirm-dialog-no').textContent    = 'No';
+      $('confirm-dialog-yes').textContent = 'Yes, Add';
+      $('confirm-dialog-no').textContent  = 'No';
       _confirmIndex++;
       _processNextConfirm();
     });
   }
 
-  // ─── Customer fuzzy match ─────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  //  CUSTOMER FUZZY MATCH
+  // ═══════════════════════════════════════════════════════════════════
 
   function _findBestCustomer(query, customers) {
     if (!query || !customers.length) return null;
@@ -639,7 +687,9 @@ const Voice = (() => {
     return dp[m][n];
   }
 
-  // ─── UI helpers ──────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  //  UI HELPERS
+  // ═══════════════════════════════════════════════════════════════════
 
   function _disableVoiceBtn() {
     const btn = $('voice-btn');
@@ -697,12 +747,12 @@ const Voice = (() => {
       return;
     }
 
-    // Touch (mobile) — passive:false required for preventDefault() to work
+    // Touch (mobile) — passive:false needed for preventDefault() to block ghost events
     btn.addEventListener('touchstart',  _onTouchStart,  { passive: false });
     btn.addEventListener('touchend',    _onTouchEnd,    { passive: false });
     btn.addEventListener('touchcancel', _onTouchEnd,    { passive: false });
 
-    // Mouse (desktop) — _touchActive flag prevents double-fire on Android
+    // Mouse (desktop)
     btn.addEventListener('mousedown',  _onMouseDown);
     btn.addEventListener('mouseup',    _onMouseUp);
     btn.addEventListener('mouseleave', _onMouseLeave);
@@ -710,6 +760,7 @@ const Voice = (() => {
     _updateVoiceBtnState(false);
   }
 
+  // ─── Public API ──────────────────────────────────────────────────
   return {
     init,
     parseProductList,

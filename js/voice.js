@@ -22,13 +22,12 @@ const Voice = (() => {
   const $ = id => document.getElementById(id);
 
   // ─── State ───────────────────────────────────────────────────────
-  let _recognition     = null;
-  let _isListening     = false;
-  let _isHolding       = false;
-  let _finalTranscript = '';
-  let _holdTimer       = null;
+  let _recognition  = null;
+  let _isListening  = false;
+  let _isHolding    = false;
+  let _holdTimer    = null;
+  let _transcript   = '';   // only ever holds the single final result
 
-  // Only start if held for this long — prevents accidental taps
   const MIN_HOLD_MS = 120;
 
   // ─── Number Word Map ─────────────────────────────────────────────
@@ -46,11 +45,9 @@ const Voice = (() => {
     'thirty':30,'forty':40,'fifty':50,'sixty':60,'seventy':70,'eighty':80,'ninety':90,
     'hundred':100,'dozen':12,
     'ik':1,'doh':2,'tin':3,'pach':5,'atha':8,
-    // currency words — map to null so _parseNumber returns null (skipped)
     'rs':null,'rupees':null,'rupee':null,'rupe':null,
   };
 
-  // ─── Unit words — stop product name after qty ────────────────────
   const UNIT_WORDS = new Set([
     'pieces','piece','pcs','pc','nos','no','number',
     'kg','kilo','kilos','kilogram','grams','gram','g',
@@ -60,7 +57,6 @@ const Voice = (() => {
     'nag','nug','tukda','tukde','kille',
   ]);
 
-  // ─── Filler words — ignored during product name parsing ──────────
   const STOP_WORDS = new Set([
     'and','aur','tatha','or','also','with',
     'ke','ka','ki','ko','se',
@@ -77,7 +73,6 @@ const Voice = (() => {
     'stock update','update stock','inventory update',
   ];
 
-  // Prefix-style: "open account of X"
   const OPEN_ACCOUNT_PREFIXES = [
     'open account of','open khata of','show account of','show khata of',
     'dikhao account of','dikhao khata of',
@@ -85,11 +80,9 @@ const Voice = (() => {
     'dikhao account','dikhao khata',
   ];
 
-  // Suffix-style: "X ka khata kholo" — regex applied to full sentence
   const OPEN_ACCOUNT_SUFFIX_RE =
     /\b(ka|ke)\s+(account|khata)\s*(kholo|dekho|dikhao|open|show|batao)?\b|\b(khata|account)\s*(kholo|dekho|dikhao)\b/;
 
-  // Payment keywords — sorted longest-first for greedy matching
   const PAYMENT_KEYWORDS = [
     'ne diya','ne bheja','de diya','wapas kiya',
     'given','paid','payment','jama',
@@ -97,7 +90,6 @@ const Voice = (() => {
     'received','mila','mili','wapas','returned',
   ].sort((a, b) => b.length - a.length);
 
-  // Khata bill trigger words after customer name
   const KHATA_BILL_TRIGGERS = [
     'ka khata','ke khata','ka account','ke account',
     'account','khata','udhaar','udhar','credit','ledger',
@@ -108,46 +100,138 @@ const Voice = (() => {
   ]);
 
   // ═══════════════════════════════════════════════════════════════════
+  //  SPEECH RECOGNITION
+  // ═══════════════════════════════════════════════════════════════════
+
+  function _initRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { _disableVoiceBtn(); return false; }
+
+    _recognition = new SpeechRecognition();
+    _recognition.lang            = Storage.getSettings().voiceLang || 'hi-IN';
+    // continuous:false — fires onresult once per utterance, no duplicates
+    // interimResults:true — we still show live text in the transcript box,
+    //                       but we only *use* isFinal results
+    _recognition.continuous      = false;
+    _recognition.interimResults  = true;
+    _recognition.maxAlternatives = 1;
+
+    _recognition.onstart = () => {
+      _isListening = true;
+      _transcript  = '';
+      _updateVoiceBtnState(true);
+      _setTranscript('🎙 Listening…', 'interim');
+    };
+
+    _recognition.onresult = e => {
+      // With continuous:false there is exactly ONE utterance in e.results.
+      // Iterate every result in this event to find the final one.
+      let interimText = '';
+      let finalText   = '';
+
+      for (let i = 0; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText   += t;
+        else                       interimText += t;
+      }
+
+      // Live display: prefer interim while still speaking
+      if (interimText && !finalText) _setTranscript(interimText, 'interim');
+
+      // Overwrite — never append — to avoid duplicating words
+      if (finalText) {
+        _transcript = finalText.trim();
+        _setTranscript(_transcript, 'final');
+      }
+    };
+
+    _recognition.onerror = e => {
+      const msgs = {
+        'no-speech'    : 'No speech detected — try again',
+        'audio-capture': 'Microphone not available',
+        'not-allowed'  : 'Mic permission denied — allow in browser settings',
+        'network'      : 'Network error — needs internet first time',
+      };
+      _setTranscript(msgs[e.error] || `Error: ${e.error}`);
+      _isListening = false;
+      _updateVoiceBtnState(false);
+    };
+
+    _recognition.onend = () => {
+      _isListening = false;
+      _updateVoiceBtnState(false);
+      const t = _transcript.trim();
+      _transcript = '';
+      if (t) _processTranscript(t);
+    };
+
+    return true;
+  }
+
+  // ─── Press & Hold ────────────────────────────────────────────────
+
+  function _onHoldStart(e) {
+    e.preventDefault();
+    // Always create a fresh recognition instance — clears all stale state
+    _recognition = null;
+    if (!_initRecognition()) return;
+
+    _isHolding  = true;
+    _transcript = '';
+
+    _holdTimer = setTimeout(() => {
+      if (!_isHolding) return;
+      try { _recognition.start(); }
+      catch (err) { console.warn('[Voice] Start error:', err); }
+    }, MIN_HOLD_MS);
+  }
+
+  function _onHoldEnd(e) {
+    e.preventDefault();
+    _isHolding = false;
+    clearTimeout(_holdTimer);
+
+    if (_isListening) {
+      try { _recognition.stop(); }
+      catch (err) { console.warn('[Voice] Stop error:', err); }
+    } else {
+      _updateVoiceBtnState(false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   //  INTENT DETECTION
   // ═══════════════════════════════════════════════════════════════════
 
   function detectIntent(raw) {
     const lower = raw.toLowerCase().trim();
 
-    // 1. Inventory
     for (const trigger of INVENTORY_TRIGGERS) {
       if (lower.includes(trigger))
         return { intent: 'inventory', rest: lower.replace(trigger, '').trim() };
     }
 
-    // 2. Open account — prefix style ("open account of abbasbhai")
     for (const prefix of OPEN_ACCOUNT_PREFIXES) {
       if (lower.startsWith(prefix)) {
-        const customerName = lower.slice(prefix.length)
-          .replace(/^[\s,of]+/, '').trim();
+        const customerName = lower.slice(prefix.length).replace(/^[\s,of]+/, '').trim();
         if (customerName) return { intent: 'open_account', customerName };
       }
     }
 
-    // 3. Open account — suffix style ("abbasbhai ka khata kholo")
     if (OPEN_ACCOUNT_SUFFIX_RE.test(lower)) {
       const customerName = lower
         .replace(OPEN_ACCOUNT_SUFFIX_RE, '')
         .replace(/\b(ka|ke|ki|open|kholo|dekho|dikhao|show|account|khata|batao)\b/g, '')
         .replace(/\s+/g, ' ').trim();
-      if (customerName.length > 1)
-        return { intent: 'open_account', customerName };
+      if (customerName.length > 1) return { intent: 'open_account', customerName };
     }
 
-    // 4. Khata payment ("abbasbhai given 200 rupees")
     const payResult = _detectPaymentIntent(lower);
     if (payResult) return payResult;
 
-    // 5. Khata bill ("abbasbhai account, amul gold 4")
     const khataResult = _detectKhataBillIntent(lower);
     if (khataResult) return khataResult;
 
-    // 6. Default billing
     return { intent: 'billing', rest: lower };
   }
 
@@ -155,10 +239,8 @@ const Voice = (() => {
     for (const keyword of PAYMENT_KEYWORDS) {
       const idx = lower.indexOf(keyword);
       if (idx === -1) continue;
-
       const before = lower.slice(0, idx).replace(/\bne\b/g, '').trim();
       if (!before) continue;
-
       const after  = lower.slice(idx + keyword.length).trim();
       const amount = _extractAmount(after);
       if (amount !== null)
@@ -171,13 +253,9 @@ const Voice = (() => {
     for (const trigger of KHATA_BILL_TRIGGERS) {
       const idx = lower.indexOf(trigger);
       if (idx === -1) continue;
-
       const customerName = lower.slice(0, idx).trim();
       if (!customerName) continue;
-
-      const rest = lower.slice(idx + trigger.length)
-        .replace(/^[\s,،:]+/, '').trim();
-
+      const rest = lower.slice(idx + trigger.length).replace(/^[\s,،:]+/, '').trim();
       return { intent: 'khata_bill', customerName, rest };
     }
     return null;
@@ -200,64 +278,72 @@ const Voice = (() => {
 
   function parseProductList(text) {
     const cleaned = text.toLowerCase()
-      .replace(/[,،;।]/g, ' , ')
-      .replace(/\s+/g, ' ').trim();
+      .replace(/[,،;।]/g, ',')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     const results = [];
-    for (const seg of cleaned.split(',').map(s => s.trim()).filter(Boolean))
+    for (const seg of cleaned.split(',').map(s => s.trim()).filter(Boolean)) {
       results.push(..._parseSegment(seg));
+    }
     return results;
   }
 
+  /**
+   * Parse one segment (between commas) into [{rawName, qty}] entries.
+   *
+   * Examples handled:
+   *   "amul gold four pieces"   → [{rawName:"amul gold", qty:4}]
+   *   "four amul gold"          → [{rawName:"amul gold", qty:4}]
+   *   "tea two and biscuit one" → [{rawName:"tea",qty:2},{rawName:"biscuit",qty:1}]
+   *   "gold 4 tea 2"            → [{rawName:"gold",qty:4},{rawName:"tea",qty:2}]
+   */
   function _parseSegment(seg) {
     const tokens = seg.split(' ').filter(Boolean);
     const results = [];
     let i = 0;
 
     while (i < tokens.length) {
-      // Skip stop words at the top of each iteration
-      if (STOP_WORDS.has(tokens[i])) { i++; continue; }
+      const tok = tokens[i];
 
-      const leadingNum = _parseNumber(tokens[i]);
+      // Consume bare stop/unit words without starting a new item
+      if (STOP_WORDS.has(tok) || UNIT_WORDS.has(tok)) { i++; continue; }
 
-      if (leadingNum !== null) {
-        // ── Qty-first pattern: "4 amul gold" ──
-        i++; // consume the number
+      const num = _parseNumber(tok);
+
+      if (num !== null) {
+        // ── QTY-FIRST: "4 amul gold" ──
+        i++; // consume the number token
         const nameToks = [];
         while (i < tokens.length) {
           const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }  // skip filler, end name
-          if (UNIT_WORDS.has(t))        { i++; break; }  // skip unit word, end name
-          if (_parseNumber(t) !== null) { break; }        // next qty — don't consume
+          if (STOP_WORDS.has(t))        { i++; break; }   // filler → end name
+          if (UNIT_WORDS.has(t))        { i++; break; }   // unit   → end name
+          if (_parseNumber(t) !== null) { break; }         // next qty → leave for outer
           nameToks.push(t);
           i++;
-          if (nameToks.length >= 5) break;
         }
-        if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty: leadingNum });
+        if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty: num });
 
       } else {
-        // ── Name-first pattern: "amul gold 4 pieces" ──
+        // ── NAME-FIRST: "amul gold 4 pieces" ──
         const nameToks = [];
         while (i < tokens.length) {
           const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }  // skip filler, end name
-          if (UNIT_WORDS.has(t))        { i++; break; }  // unit word before qty? skip & end
-          if (_parseNumber(t) !== null) { break; }        // found qty — don't consume
+          if (STOP_WORDS.has(t))        { i++; break; }   // filler → end name
+          if (UNIT_WORDS.has(t))        { i++; break; }   // unit before qty → skip & end
+          if (_parseNumber(t) !== null) { break; }         // qty found → leave i here
           nameToks.push(t);
           i++;
-          if (nameToks.length >= 5) break;
         }
 
         // Optional trailing quantity
         let qty = 1;
-        if (i < tokens.length) {
-          const n = _parseNumber(tokens[i]);
-          if (n !== null) {
-            qty = n;
-            i++;
-            // Consume optional unit word right after the number ("4 pieces")
-            if (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
-          }
+        if (i < tokens.length && _parseNumber(tokens[i]) !== null) {
+          qty = _parseNumber(tokens[i]);
+          i++;
+          // Swallow optional unit word after the number e.g. "4 pieces"
+          if (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
         }
 
         if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty });
@@ -278,6 +364,35 @@ const Voice = (() => {
   //  INTENT HANDLERS
   // ═══════════════════════════════════════════════════════════════════
 
+  function _processTranscript(raw) {
+    _setTranscript(`Heard: "${raw}"`);
+    const { intent, rest, customerName, amount } = detectIntent(raw);
+    console.log('[Voice] intent=%s customer=%s amount=%s rest=%s', intent, customerName, amount, rest);
+
+    switch (intent) {
+      case 'inventory':
+        _toast('📦 Updating stock…', 'info');
+        _handleInventory(rest);
+        break;
+      case 'open_account':
+        _toast(`📒 Opening ${customerName}'s account…`, 'info');
+        _handleOpenAccount(customerName);
+        break;
+      case 'khata_payment':
+        _toast('💰 Recording payment…', 'info');
+        _handleKhataPayment(customerName, amount);
+        break;
+      case 'khata_bill':
+        _toast('📒 Khata bill…', 'info');
+        _handleKhataBill(customerName, rest);
+        break;
+      case 'billing':
+      default:
+        _handleBilling(rest);
+        break;
+    }
+  }
+
   function _handleBilling(rest) {
     const parsed = parseProductList(rest);
     if (!parsed.length) { _toast('No products understood — try again', 'error'); return; }
@@ -290,7 +405,6 @@ const Voice = (() => {
 
     let added = 0;
     const unknown = [];
-
     parsed.forEach(item => {
       const match = Products.findBestMatch(item.rawName);
       if (match && match.score < 0.35) {
@@ -311,13 +425,9 @@ const Voice = (() => {
   function _handleOpenAccount(customerName) {
     const customers = Storage.getAllKhata();
     if (!customers.length) { _toast('No khata accounts yet', 'error'); return; }
-
     const match = _findBestCustomer(customerName, customers);
     if (!match) { _toast(`"${customerName}" not found in Khata`, 'error'); return; }
-
-    // Switch to Khata tab first, then open modal
     if (typeof App !== 'undefined') App.switchTab('khata');
-
     setTimeout(() => {
       if (typeof Khata !== 'undefined') {
         Khata.renderKhataList();
@@ -330,13 +440,10 @@ const Voice = (() => {
   function _handleKhataBill(customerName, rest) {
     const customers = Storage.getAllKhata();
     if (!customers.length) { _toast('No khata customers found', 'error'); return; }
-
     const custMatch = _findBestCustomer(customerName, customers);
     if (!custMatch) { _toast(`"${customerName}" not found in Khata`, 'error'); return; }
-
     const parsed = parseProductList(rest);
     if (!parsed.length) { _toast('No products understood for khata bill', 'error'); return; }
-
     _showKhataConfirm(custMatch, parsed);
   }
 
@@ -344,9 +451,7 @@ const Voice = (() => {
     const customers = Storage.getAllKhata();
     const custMatch = _findBestCustomer(customerName, customers);
     if (!custMatch) { _toast(`"${customerName}" not found in Khata`, 'error'); return; }
-
     const curr = Storage.getSettings().currency || '₹';
-
     _showConfirmDialog(
       'Khata Payment',
       `<p>Customer: <strong>${_esc(custMatch.name)}</strong></p>
@@ -386,14 +491,12 @@ const Voice = (() => {
 
     _showConfirmDialog('Khata Bill', html, 'Add to Khata', () => {
       confident.forEach(i => Billing.addToCart(i.match.product.id, i.qty));
-
       const toggle = $('khata-toggle');
       const select = $('khata-customer-select');
       if (toggle) toggle.checked = true;
       $('khata-customer-select-wrap')?.classList.remove('hidden');
       if (typeof Khata !== 'undefined') Khata.refreshCustomerSelect();
       if (select) select.value = customer.id;
-
       if (typeof BillPrint !== 'undefined') {
         BillPrint.generateBill();
         _toast(`Khata bill created for ${customer.name} ✓`);
@@ -473,7 +576,6 @@ const Voice = (() => {
       _processNextConfirm();
     });
 
-    // Override cancel button to also advance the queue
     const noBtn = $('confirm-dialog-no');
     const newNo = noBtn.cloneNode(true);
     noBtn.parentNode.replaceChild(newNo, noBtn);
@@ -513,129 +615,6 @@ const Voice = (() => {
           ? dp[i-1][j-1]
           : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
     return dp[m][n];
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  SPEECH RECOGNITION
-  // ═══════════════════════════════════════════════════════════════════
-
-  function _initRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) { _disableVoiceBtn(); return false; }
-
-    _recognition = new SpeechRecognition();
-    _recognition.lang            = Storage.getSettings().voiceLang || 'hi-IN';
-    _recognition.interimResults  = true;
-    _recognition.maxAlternatives = 3;
-    _recognition.continuous      = true; // keep capturing while held down
-
-    _recognition.onstart = () => {
-      _isListening = true;
-      _updateVoiceBtnState(true);
-      _setTranscript('🎙 सुन रहा हूँ… / Listening…');
-    };
-
-    _recognition.onresult = e => {
-      let interim = '', final = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const text = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final   += text;
-        else                       interim += text;
-      }
-      if (interim) _setTranscript(interim, 'interim');
-      if (final) {
-        _finalTranscript += ' ' + final;
-        _setTranscript(_finalTranscript.trim(), 'final');
-      }
-    };
-
-    _recognition.onerror = e => {
-      const msgs = {
-        'no-speech'    : 'No speech detected — try again',
-        'audio-capture': 'Microphone not available',
-        'not-allowed'  : 'Mic permission denied — allow in browser settings',
-        'network'      : 'Network error — needs internet first time',
-      };
-      _setTranscript(msgs[e.error] || `Error: ${e.error}`);
-      _isListening = false;
-      _updateVoiceBtnState(false);
-    };
-
-    _recognition.onend = () => {
-      _isListening = false;
-      _updateVoiceBtnState(false);
-      const transcript = _finalTranscript.trim();
-      _finalTranscript = '';
-      if (transcript) _processTranscript(transcript);
-    };
-
-    return true;
-  }
-
-  // ─── Main processing ─────────────────────────────────────────────
-
-  function _processTranscript(raw) {
-    _setTranscript(`Heard: "${raw}"`);
-    const { intent, rest, customerName, amount } = detectIntent(raw);
-    console.log('[Voice] intent=%s customer=%s amount=%s rest=%s', intent, customerName, amount, rest);
-
-    switch (intent) {
-      case 'inventory':
-        _toast('📦 Updating stock…', 'info');
-        _handleInventory(rest);
-        break;
-      case 'open_account':
-        _toast(`📒 Opening ${customerName}'s account…`, 'info');
-        _handleOpenAccount(customerName);
-        break;
-      case 'khata_payment':
-        _toast('💰 Recording payment…', 'info');
-        _handleKhataPayment(customerName, amount);
-        break;
-      case 'khata_bill':
-        _toast('📒 Khata bill…', 'info');
-        _handleKhataBill(customerName, rest);
-        break;
-      case 'billing':
-      default:
-        _handleBilling(rest);
-        break;
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  PRESS & HOLD BUTTON
-  // ═══════════════════════════════════════════════════════════════════
-
-  function _onHoldStart(e) {
-    e.preventDefault(); // prevent touch firing mouse events too
-
-    if (!_recognition && !_initRecognition()) return;
-    _isHolding       = true;
-    _finalTranscript = '';
-
-    // Only start if still held after MIN_HOLD_MS (filters accidental taps)
-    _holdTimer = setTimeout(() => {
-      if (!_isHolding) return;
-      _recognition.lang = Storage.getSettings().voiceLang || 'hi-IN';
-      try { _recognition.start(); }
-      catch (err) { console.warn('[Voice] Start error:', err); }
-    }, MIN_HOLD_MS);
-  }
-
-  function _onHoldEnd(e) {
-    e.preventDefault();
-    _isHolding = false;
-    clearTimeout(_holdTimer);
-
-    if (_isListening) {
-      // Stop recognition — onend fires and processes transcript
-      try { _recognition.stop(); }
-      catch (err) { console.warn('[Voice] Stop error:', err); }
-    } else {
-      // Released before recognition started (quick tap)
-      _updateVoiceBtnState(false);
-    }
   }
 
   // ─── UI helpers ──────────────────────────────────────────────────
@@ -696,25 +675,23 @@ const Voice = (() => {
       return;
     }
 
-    // Touch (mobile) — primary interaction
+    // Touch (mobile)
     btn.addEventListener('touchstart',  _onHoldStart, { passive: false });
     btn.addEventListener('touchend',    _onHoldEnd,   { passive: false });
     btn.addEventListener('touchcancel', _onHoldEnd,   { passive: false });
 
-    // Mouse (desktop/testing)
-    btn.addEventListener('mousedown', _onHoldStart);
-    btn.addEventListener('mouseup',   _onHoldEnd);
+    // Mouse (desktop)
+    btn.addEventListener('mousedown',  _onHoldStart);
+    btn.addEventListener('mouseup',    _onHoldEnd);
     btn.addEventListener('mouseleave', e => { if (_isHolding) _onHoldEnd(e); });
 
-    // Set initial label
     _updateVoiceBtnState(false);
   }
 
-  // ─── Public API ──────────────────────────────────────────────────
   return {
     init,
-    parseProductList, // for testing
-    detectIntent,     // for testing
+    parseProductList,
+    detectIntent,
   };
 
 })();

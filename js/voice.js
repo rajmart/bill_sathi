@@ -215,44 +215,51 @@ const Voice = (() => {
     let i = 0;
 
     while (i < tokens.length) {
-      const token = tokens[i];
-      if (STOP_WORDS.has(token)) { i++; continue; }
+      // Skip stop words at the top of each iteration
+      if (STOP_WORDS.has(tokens[i])) { i++; continue; }
 
-      const leadingNum = _parseNumber(token);
+      const leadingNum = _parseNumber(tokens[i]);
 
       if (leadingNum !== null) {
-        // Qty-first: "4 amul gold"
-        i++;
+        // ── Qty-first pattern: "4 amul gold" ──
+        i++; // consume the number
         const nameToks = [];
         while (i < tokens.length) {
           const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }
-          if (UNIT_WORDS.has(t))        { i++; break; }
-          if (_parseNumber(t) !== null)        break;
-          nameToks.push(t); i++;
+          if (STOP_WORDS.has(t))        { i++; break; }  // skip filler, end name
+          if (UNIT_WORDS.has(t))        { i++; break; }  // skip unit word, end name
+          if (_parseNumber(t) !== null) { break; }        // next qty — don't consume
+          nameToks.push(t);
+          i++;
           if (nameToks.length >= 5) break;
         }
         if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty: leadingNum });
 
       } else {
-        // Name-first: "amul gold 4 pieces"
+        // ── Name-first pattern: "amul gold 4 pieces" ──
         const nameToks = [];
         while (i < tokens.length) {
           const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }
-          if (_parseNumber(t) !== null)        break;
-          nameToks.push(t); i++;
+          if (STOP_WORDS.has(t))        { i++; break; }  // skip filler, end name
+          if (UNIT_WORDS.has(t))        { i++; break; }  // unit word before qty? skip & end
+          if (_parseNumber(t) !== null) { break; }        // found qty — don't consume
+          nameToks.push(t);
+          i++;
           if (nameToks.length >= 5) break;
         }
 
+        // Optional trailing quantity
         let qty = 1;
         if (i < tokens.length) {
           const n = _parseNumber(tokens[i]);
           if (n !== null) {
-            qty = n; i++;
+            qty = n;
+            i++;
+            // Consume optional unit word right after the number ("4 pieces")
             if (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
           }
         }
+
         if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty });
       }
     }

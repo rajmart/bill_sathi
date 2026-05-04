@@ -6,8 +6,8 @@
  * Strategy: Cache-first for static assets, network-first for data.
  */
 
-const CACHE_NAME   = 'bill-sathi-v2';
-const RUNTIME_CACHE = 'bill-sathi-runtime-v2';
+const CACHE_NAME   = 'bill-sathi-v3';
+const RUNTIME_CACHE = 'bill-sathi-runtime-v3';
 
 // ─── Assets to cache on install ──────────────────────────────────────────────
 const PRECACHE_ASSETS = [

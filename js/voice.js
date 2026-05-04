@@ -110,8 +110,7 @@ const Voice = (() => {
     _recognition = new SpeechRecognition();
     _recognition.lang            = Storage.getSettings().voiceLang || 'hi-IN';
     // continuous:false — fires onresult once per utterance, no duplicates
-    // interimResults:true — we still show live text in the transcript box,
-    //                       but we only *use* isFinal results
+    // interimResults:true — show live text, but only USE isFinal results
     _recognition.continuous      = false;
     _recognition.interimResults  = true;
     _recognition.maxAlternatives = 1;
@@ -125,7 +124,6 @@ const Voice = (() => {
 
     _recognition.onresult = e => {
       // With continuous:false there is exactly ONE utterance in e.results.
-      // Iterate every result in this event to find the final one.
       let interimText = '';
       let finalText   = '';
 
@@ -138,7 +136,7 @@ const Voice = (() => {
       // Live display: prefer interim while still speaking
       if (interimText && !finalText) _setTranscript(interimText, 'interim');
 
-      // Overwrite — never append — to avoid duplicating words
+      // Overwrite — NEVER append — to avoid duplicating words
       if (finalText) {
         _transcript = finalText.trim();
         _setTranscript(_transcript, 'final');
@@ -290,7 +288,7 @@ const Voice = (() => {
   }
 
   /**
-   * Parse one segment (between commas) into [{rawName, qty}] entries.
+   * Parse one comma-separated segment into [{rawName, qty}] entries.
    *
    * Examples handled:
    *   "amul gold four pieces"   → [{rawName:"amul gold", qty:4}]
@@ -319,7 +317,7 @@ const Voice = (() => {
           const t = tokens[i];
           if (STOP_WORDS.has(t))        { i++; break; }   // filler → end name
           if (UNIT_WORDS.has(t))        { i++; break; }   // unit   → end name
-          if (_parseNumber(t) !== null) { break; }         // next qty → leave for outer
+          if (_parseNumber(t) !== null) { break; }         // next qty → leave for outer loop
           nameToks.push(t);
           i++;
         }

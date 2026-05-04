@@ -7,7 +7,7 @@
  */
 
 const CACHE_NAME   = 'bill-sathi-v2';
-const RUNTIME_CACHE = 'bill-sathi-runtime-v1';
+const RUNTIME_CACHE = 'bill-sathi-runtime-v2';
 
 // ─── Assets to cache on install ──────────────────────────────────────────────
 const PRECACHE_ASSETS = [

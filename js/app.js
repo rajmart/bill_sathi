@@ -1,17 +1,19 @@
 'use strict';
 
 /**
- * app.js — Bill Sathi v1.1
+ * app.js — Bill Sathi v1.3
  * Main application shell — init, tab routing, settings modal,
  * live clock, connection status, toast notifications.
  * Must be loaded LAST (after all other JS files).
  *
  * Changelog:
- *  v1.1 — Fixed voice input: press-and-hold, no duplicate words,
- *          tighter match thresholds, cleaner confirm dialog queue.
+ *  v1.1 — Press-and-hold mic, no duplicate words, tighter thresholds
+ *  v1.2 — (skipped — was API-based, reverted)
+ *  v1.3 — Token-level offline matcher, zero confirm popups,
+ *          single summary toast per voice command
  */
 
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.3';
 
 const App = (() => {
 
@@ -30,7 +32,6 @@ const App = (() => {
       const panel = $(`tab-${t}`);
       const btn   = document.querySelector(`[data-tab="${t}"]`);
       if (!panel || !btn) return;
-
       const isActive = t === tabName;
       panel.classList.toggle('active', isActive);
       panel.classList.toggle('hidden', !isActive);
@@ -73,14 +74,10 @@ const App = (() => {
       voiceLang  : $('settings-voice-lang').value          || 'hi-IN',
       currency   : $('settings-currency').value            || '₹',
     };
-
     Storage.saveSettings(updated);
-
     const shopNameEl = $('shop-name-display');
     if (shopNameEl) shopNameEl.textContent = updated.shopName;
-
     if (typeof Billing !== 'undefined') Billing.renderCart();
-
     _closeSettings();
     showToast('Settings saved ✓');
   }
@@ -92,20 +89,16 @@ const App = (() => {
     $('settings-save-btn')?.addEventListener('click', _saveSettings);
   }
 
-  // ─── Clock ───────────────────────────────────────────────────────
+  // ─── Clock (shows version + time) ────────────────────────────────
 
   function _startClock() {
     function _tick() {
       const el = $('current-date-time');
       if (!el) return;
       const now = new Date();
-      // Show version alongside date/time
       const dateStr = now.toLocaleString('en-IN', {
-        weekday: 'short',
-        day    : '2-digit',
-        month  : 'short',
-        hour   : '2-digit',
-        minute : '2-digit',
+        weekday: 'short', day: '2-digit', month: 'short',
+        hour: '2-digit', minute: '2-digit',
       });
       el.textContent = `${APP_VERSION} · ${dateStr}`;
     }
@@ -118,13 +111,11 @@ const App = (() => {
   function _initConnectionStatus() {
     const dot = $('status-dot');
     if (!dot) return;
-
     function update() {
       const online = navigator.onLine;
       dot.style.background = online ? '#4caf50' : '#f44336';
       dot.title = online ? 'Online' : 'Offline — app still works';
     }
-
     update();
     window.addEventListener('online',  update);
     window.addEventListener('offline', update);
@@ -140,7 +131,6 @@ const App = (() => {
     toast.className = `toast toast-${type}`;
     toast.setAttribute('role', 'status');
     toast.textContent = msg;
-
     container.appendChild(toast);
 
     requestAnimationFrame(() => toast.classList.add('toast-show'));
@@ -164,7 +154,6 @@ const App = (() => {
         if (typeof Khata !== 'undefined') Khata.closeDetailModal?.();
         $('confirm-dialog')?.classList.add('hidden');
       }
-
       if (e.altKey) {
         const map = { b: 'billing', k: 'khata', p: 'products', h: 'bills' };
         const tab = map[e.key.toLowerCase()];
@@ -191,7 +180,7 @@ const App = (() => {
     });
   }
 
-  // ─── Apply Saved Settings on Load ───────────────────────────────
+  // ─── Apply Saved Settings ────────────────────────────────────────
 
   function _applySavedSettings() {
     const s = Storage.getSettings();
@@ -217,7 +206,6 @@ const App = (() => {
     if (typeof BillPrint !== 'undefined') BillPrint.init();
 
     switchTab('billing');
-
     console.log(`[App] Bill Sathi ${APP_VERSION} ready ✓`);
   }
 

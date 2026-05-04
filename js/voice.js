@@ -1,16 +1,17 @@
 'use strict';
 
 /**
- * voice.js — Bill Sathi v1.3
+ * voice.js — Bill Sathi v1.4
  *
- * WHAT'S NEW in v1.3 (fully offline, no API needed):
- *  - Token-level fuzzy matching instead of whole-string Levenshtein
- *    → "amul gol" matches "Amul Gold", "parleg" matches "Parle-G"
- *  - Checks each spoken word against each product name word separately
- *  - Prefix matching: "spec" matches "Special", "gol" matches "Gold"
- *  - ZERO confirm popups — items added silently
- *  - ONE clean toast summary at the end: "✓ Added: X, Y  |  Not found: Z"
- *  - Press & Hold mic (same as v1.1)
+ * WHAT'S NEW in v1.4:
+ *  - Smarter multi-item parser: no longer relies on commas alone
+ *  - Natural speech "gold one piece and tea special one piece" → 2 items ✓
+ *  - Product-boundary detection using sliding window + fuzzy match
+ *  - Quantity can appear BEFORE or AFTER the product name
+ *  - Handles mixed Hindi/English number words
+ *  - Zero confirm popups — items added silently
+ *  - ONE clean toast summary: "✓ Added: X, Y  |  Not found: Z"
+ *  - Press & Hold mic
  *  - 100% offline
  *
  * Depends on: storage.js, products.js, billing.js, khata.js, app.js
@@ -59,8 +60,14 @@ const Voice = (() => {
     'nag','nug','tukda','tukde',
   ]);
 
+  // Words that separate items in natural speech
+  const SEPARATOR_WORDS = new Set([
+    'and','aur','tatha','phir','then','also','plus',
+    'or','aur','aur bhi','saath','ke saath',
+  ]);
+
   const STOP_WORDS = new Set([
-    'and','aur','tatha','or','also','with','the','a','an',
+    'the','a','an',
     'ke','ka','ki','ko','se','ne',
     'mujhe','de','dena','please','lao','chahiye',
     'add','karo','lagao','dalo',
@@ -104,30 +111,13 @@ const Voice = (() => {
   //  SMART TOKEN-LEVEL PRODUCT MATCHER
   // ═══════════════════════════════════════════════════════════════════
 
-  /**
-   * Score how well a spoken query matches a product name or alias.
-   * Returns 0.0 (perfect match) → 1.0 (no match at all).
-   * Threshold: < 0.45 = accept.
-   *
-   * How it works:
-   *  - Split both query and candidate into word tokens
-   *  - For each spoken word, find the best matching product word
-   *  - Exact word > prefix > fuzzy (Levenshtein ≤ 2 edits)
-   *  - Average the per-token scores
-   *  - Much better than whole-string Levenshtein:
-   *    "t special" → ["t","special"] each matched against ["tea","special"]
-   *    → "special" exact = 0.0, "t" prefix of "tea" = 0.1 → avg ~0.05 ✓
-   */
   function _scoreMatch(query, candidate) {
     if (!query || !candidate) return 1.0;
 
     const q = _normalise(query);
     const c = _normalise(candidate);
 
-    // Exact full match
     if (q === c) return 0.0;
-
-    // One contains the other
     if (c.includes(q)) return 0.04;
     if (q.includes(c)) return 0.06;
 
@@ -141,10 +131,8 @@ const Voice = (() => {
       let best = 1.0;
 
       for (const ct of cToks) {
-        // Exact token match
         if (qt === ct) { best = 0.0; break; }
 
-        // Prefix: "spec" matches "special", "gol" matches "gold"
         if (ct.startsWith(qt) && qt.length >= 2) {
           best = Math.min(best, 0.08);
           continue;
@@ -154,13 +142,11 @@ const Voice = (() => {
           continue;
         }
 
-        // Single-character token (like "g" in "Parle G") — exact only
         if (qt.length === 1 || ct.length === 1) {
           if (qt === ct) best = Math.min(best, 0.0);
           continue;
         }
 
-        // Levenshtein on individual tokens (max 2 edits allowed)
         const maxLen = Math.max(qt.length, ct.length);
         const lev    = _levenshtein(qt, ct);
         if (lev <= 2) {
@@ -172,7 +158,6 @@ const Voice = (() => {
     }
 
     const avgScore    = totalScore / qToks.length;
-    // Small penalty if candidate has many more tokens than query
     const extraTokens = Math.max(0, cToks.length - qToks.length);
     const penalty     = extraTokens * 0.04;
 
@@ -181,7 +166,7 @@ const Voice = (() => {
 
   function _normalise(str) {
     return str.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')   // remove punctuation/hyphens
+      .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -192,8 +177,6 @@ const Voice = (() => {
 
   /**
    * Find the best matching product for a spoken name.
-   * Checks: product name + all aliases.
-   * Returns { product, score } or null if nothing good enough.
    */
   function findBestMatch(query) {
     const products = Storage.getAllProducts();
@@ -218,73 +201,158 @@ const Voice = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  //  TRANSCRIPT PARSER
-  //  Splits spoken text into [{rawName, qty}] segments
+  //  TRANSCRIPT PARSER — v1.4 SLIDING WINDOW APPROACH
+  //
+  //  The old approach split only on commas, which failed for natural
+  //  speech like "gold one piece and tea special one piece".
+  //
+  //  New approach:
+  //  1. First split on hard separators (commas, semicolons, "and"/"aur")
+  //  2. For each segment, try to find product + quantity using a
+  //     sliding window: try windows of 1..N tokens as product name,
+  //     pick the one that gives the best product match score,
+  //     then parse what's left as quantity.
+  //  3. If a segment has multiple products (e.g. "gold two tea three"),
+  //     greedily consume tokens until we find a match boundary.
   // ═══════════════════════════════════════════════════════════════════
 
+  /**
+   * Main entry point: parse a transcript into [{rawName, qty}] items.
+   */
   function parseProductList(text) {
+    // Step 1: Normalise separators
     const cleaned = text.toLowerCase()
-      .replace(/[,،;।]/g, ',')
+      .replace(/[,،;।]/g, '|')           // hard punctuation → pipe
+      .replace(/\b(and|aur|tatha|phir|then|also|plus)\b/g, '|')  // connector words → pipe
       .replace(/\s+/g, ' ')
       .trim();
 
     const results = [];
-    for (const seg of cleaned.split(',').map(s => s.trim()).filter(Boolean)) {
-      results.push(..._parseSegment(seg));
+
+    // Step 2: Split on pipes, parse each segment
+    for (const seg of cleaned.split('|').map(s => s.trim()).filter(Boolean)) {
+      const items = _parseSegmentV2(seg);
+      results.push(...items);
     }
+
     return results;
   }
 
-  function _parseSegment(seg) {
-    const tokens = seg.split(' ').filter(Boolean);
+  /**
+   * Parse a single segment (already split at connectors).
+   * Uses sliding-window product detection to find item boundaries.
+   *
+   * Handles these patterns within one segment:
+   *   "gold one piece"            → [{gold, 1}]
+   *   "two amul gold"             → [{amul gold, 2}]
+   *   "tea special"               → [{tea special, 1}]
+   *   "parle g three"             → [{parle g, 3}]
+   *   "gold 1 tea special 1"      → [{gold,1},{tea special,1}]  (no connector)
+   */
+  function _parseSegmentV2(seg) {
+    const tokens = seg.split(' ').filter(t => t.length > 0 && !STOP_WORDS.has(t));
+    if (!tokens.length) return [];
+
     const results = [];
     let i = 0;
 
     while (i < tokens.length) {
-      const tok = tokens[i];
+      // Skip unit words
+      if (UNIT_WORDS.has(tokens[i])) { i++; continue; }
 
-      if (STOP_WORDS.has(tok) || UNIT_WORDS.has(tok)) { i++; continue; }
-
-      const num = _parseNumber(tok);
-
-      if (num !== null) {
-        // QTY-FIRST: "4 amul gold"
+      // ── QTY-FIRST pattern: number then product name ──────────────
+      const leadNum = _parseNumber(tokens[i]);
+      if (leadNum !== null) {
         i++;
-        const nameToks = [];
-        while (i < tokens.length) {
-          const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }
-          if (UNIT_WORDS.has(t))        { i++; break; }
-          if (_parseNumber(t) !== null) { break; }
-          nameToks.push(t);
-          i++;
+        // Collect following non-number, non-unit tokens as product name
+        // Use sliding window to find the best matching product
+        const { name, len } = _findProductWindow(tokens, i);
+        if (name) {
+          results.push({ rawName: name, qty: leadNum });
+          i += len;
+          // Skip trailing unit word if present
+          if (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
+        } else {
+          // No product found after the number — skip
         }
-        if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty: num });
+        continue;
+      }
 
-      } else {
-        // NAME-FIRST: "amul gold 4 pieces"
-        const nameToks = [];
-        while (i < tokens.length) {
-          const t = tokens[i];
-          if (STOP_WORDS.has(t))        { i++; break; }
-          if (UNIT_WORDS.has(t))        { i++; break; }
-          if (_parseNumber(t) !== null) { break; }
-          nameToks.push(t);
-          i++;
-        }
-
+      // ── NAME-FIRST pattern: product name then optional number ─────
+      const { name, len } = _findProductWindow(tokens, i);
+      if (name) {
+        i += len;
+        // Skip unit words between name and qty
+        while (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
+        // Read trailing qty if present
         let qty = 1;
         if (i < tokens.length && _parseNumber(tokens[i]) !== null) {
           qty = _parseNumber(tokens[i]);
           i++;
           if (i < tokens.length && UNIT_WORDS.has(tokens[i])) i++;
         }
-
-        if (nameToks.length) results.push({ rawName: nameToks.join(' '), qty });
+        results.push({ rawName: name, qty });
+        continue;
       }
+
+      // ── Nothing matched at position i — skip token ────────────────
+      i++;
     }
 
     return results;
+  }
+
+  /**
+   * Sliding window product finder.
+   * Starting at `tokens[start]`, tries windows of length 1..MAX_WINDOW
+   * (skipping number/unit tokens), picks the window that gives the
+   * best product match score. Returns { name, len } or { name: null, len: 0 }.
+   *
+   * MAX_WINDOW: we try up to 4 tokens as a product name, which covers
+   * names like "amul gold full cream milk" while not over-consuming.
+   */
+  const MAX_WINDOW = 4;
+
+  function _findProductWindow(tokens, start) {
+    const products = Storage.getAllProducts();
+    if (!products.length) return { name: null, len: 0 };
+
+    let bestName  = null;
+    let bestLen   = 0;
+    let bestScore = 1.0;
+
+    // Build candidate windows
+    const windowTokens = [];
+    for (let w = 0; w < MAX_WINDOW && (start + w) < tokens.length; w++) {
+      const tok = tokens[start + w];
+
+      // Stop window expansion at numbers (they are quantities) or unit words
+      if (_parseNumber(tok) !== null) break;
+      if (UNIT_WORDS.has(tok)) break;
+
+      windowTokens.push(tok);
+      const windowStr = windowTokens.join(' ');
+
+      // Score this window against all products
+      for (const product of products) {
+        const candidates = [product.name, ...(product.aliases || [])];
+        for (const candidate of candidates) {
+          const score = _scoreMatch(windowStr, candidate);
+          if (score < bestScore) {
+            bestScore = score;
+            bestName  = windowStr;
+            bestLen   = w + 1;
+          }
+        }
+      }
+    }
+
+    // Only accept if score is good enough
+    if (bestScore < 0.45) {
+      return { name: bestName, len: bestLen };
+    }
+
+    return { name: null, len: 0 };
   }
 
   function _parseNumber(token) {
@@ -377,7 +445,7 @@ const Voice = (() => {
 
     _recognition = new SpeechRecognition();
     _recognition.lang            = Storage.getSettings().voiceLang || 'hi-IN';
-    _recognition.continuous      = false;   // single utterance — no duplicates
+    _recognition.continuous      = false;
     _recognition.interimResults  = true;
     _recognition.maxAlternatives = 1;
 
@@ -397,7 +465,6 @@ const Voice = (() => {
         else                       interimText += t;
       }
       if (interimText && !finalText) _setTranscript(interimText, 'interim');
-      // OVERWRITE — never append, prevents duplicate words
       if (finalText) { _transcript = finalText.trim(); _setTranscript(_transcript, 'final'); }
     };
 
@@ -454,7 +521,7 @@ const Voice = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  //  PROCESS TRANSCRIPT — ZERO POPUPS
+  //  PROCESS TRANSCRIPT
   // ═══════════════════════════════════════════════════════════════════
 
   function _processTranscript(raw) {
@@ -473,6 +540,8 @@ const Voice = (() => {
 
   function _handleBilling(rest) {
     const parsed = parseProductList(rest);
+    console.log('[Voice] parsed items:', JSON.stringify(parsed));
+
     if (!parsed.length) { _toast('Could not understand — try again', 'error'); return; }
 
     const added    = [];
@@ -488,7 +557,6 @@ const Voice = (() => {
       }
     }
 
-    // Clean single-line summary — no popups ever
     if (added.length)    _toast(`✓ ${added.join(',  ')}`, 'success', 3500);
     if (notFound.length) _toast(`Not found: ${notFound.join(', ')}`, 'error', 4000);
   }

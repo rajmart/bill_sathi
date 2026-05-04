@@ -1,11 +1,17 @@
 'use strict';
 
 /**
- * app.js
+ * app.js — Bill Sathi v1.1
  * Main application shell — init, tab routing, settings modal,
  * live clock, connection status, toast notifications.
  * Must be loaded LAST (after all other JS files).
+ *
+ * Changelog:
+ *  v1.1 — Fixed voice input: press-and-hold, no duplicate words,
+ *          tighter match thresholds, cleaner confirm dialog queue.
  */
+
+const APP_VERSION = 'v1.1';
 
 const App = (() => {
 
@@ -20,7 +26,6 @@ const App = (() => {
     if (!TABS.includes(tabName)) return;
     _activeTab = tabName;
 
-    // Toggle panels
     TABS.forEach(t => {
       const panel = $(`tab-${t}`);
       const btn   = document.querySelector(`[data-tab="${t}"]`);
@@ -33,7 +38,6 @@ const App = (() => {
       btn.setAttribute('aria-selected', String(isActive));
     });
 
-    // Refresh data when switching to certain tabs
     if (tabName === 'khata'    && typeof Khata    !== 'undefined') Khata.renderKhataList();
     if (tabName === 'products' && typeof Products !== 'undefined') Products.renderProductList();
     if (tabName === 'bills'    && typeof BillPrint !== 'undefined') BillPrint.renderBillHistory();
@@ -72,11 +76,9 @@ const App = (() => {
 
     Storage.saveSettings(updated);
 
-    // Update header shop name
     const shopNameEl = $('shop-name-display');
     if (shopNameEl) shopNameEl.textContent = updated.shopName;
 
-    // Re-render cart to pick up new currency symbol
     if (typeof Billing !== 'undefined') Billing.renderCart();
 
     _closeSettings();
@@ -97,16 +99,18 @@ const App = (() => {
       const el = $('current-date-time');
       if (!el) return;
       const now = new Date();
-      el.textContent = now.toLocaleString('en-IN', {
+      // Show version alongside date/time
+      const dateStr = now.toLocaleString('en-IN', {
         weekday: 'short',
         day    : '2-digit',
         month  : 'short',
         hour   : '2-digit',
         minute : '2-digit',
       });
+      el.textContent = `${APP_VERSION} · ${dateStr}`;
     }
     _tick();
-    setInterval(_tick, 30_000); // update every 30s
+    setInterval(_tick, 30_000);
   }
 
   // ─── Connection Status ───────────────────────────────────────────
@@ -128,12 +132,6 @@ const App = (() => {
 
   // ─── Toast Notifications ─────────────────────────────────────────
 
-  /**
-   * Show a toast message.
-   * @param {string} msg    - Message text
-   * @param {string} type   - 'success' | 'error' | 'info'
-   * @param {number} duration - ms before auto-dismiss (default 2800)
-   */
   function showToast(msg, type = 'success', duration = 2800) {
     const container = $('toast-container');
     if (!container) return;
@@ -145,7 +143,6 @@ const App = (() => {
 
     container.appendChild(toast);
 
-    // Trigger entrance animation
     requestAnimationFrame(() => toast.classList.add('toast-show'));
 
     const dismiss = () => {
@@ -154,28 +151,20 @@ const App = (() => {
       setTimeout(() => toast.remove(), 350);
     };
 
-    // Auto-dismiss
     const timer = setTimeout(dismiss, duration);
-
-    // Tap to dismiss early
-    toast.addEventListener('click', () => {
-      clearTimeout(timer);
-      dismiss();
-    });
+    toast.addEventListener('click', () => { clearTimeout(timer); dismiss(); });
   }
 
   // ─── Keyboard Shortcuts ──────────────────────────────────────────
 
   function _initKeyboardShortcuts() {
     document.addEventListener('keydown', e => {
-      // Escape closes any open modal
       if (e.key === 'Escape') {
         $('settings-modal')?.classList.add('hidden');
         if (typeof Khata !== 'undefined') Khata.closeDetailModal?.();
         $('confirm-dialog')?.classList.add('hidden');
       }
 
-      // Alt+B / Alt+K / Alt+P / Alt+H to switch tabs
       if (e.altKey) {
         const map = { b: 'billing', k: 'khata', p: 'products', h: 'bills' };
         const tab = map[e.key.toLowerCase()];
@@ -192,7 +181,6 @@ const App = (() => {
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       _deferredInstallPrompt = e;
-      // Show a subtle install toast once
       showToast('📲 Install as app? Tap here →', 'info', 8000);
       $('toast-container')?.addEventListener('click', () => {
         if (_deferredInstallPrompt) {
@@ -214,51 +202,30 @@ const App = (() => {
   // ─── Init ────────────────────────────────────────────────────────
 
   function init() {
-    // Apply settings first (shop name etc.)
     _applySavedSettings();
-
-    // Start clock
     _startClock();
-
-    // Connection status indicator
     _initConnectionStatus();
-
-    // Tab nav
     _initTabs();
-
-    // Settings modal
     _initSettings();
-
-    // Keyboard shortcuts
     _initKeyboardShortcuts();
-
-    // PWA install prompt
     _initInstallPrompt();
 
-    // Init all modules
     if (typeof Products  !== 'undefined') Products.init();
     if (typeof Khata     !== 'undefined') Khata.init();
     if (typeof Billing   !== 'undefined') Billing.init();
     if (typeof Voice     !== 'undefined') Voice.init();
     if (typeof BillPrint !== 'undefined') BillPrint.init();
 
-    // Start on billing tab
     switchTab('billing');
 
-    console.log('[App] Smart Cashier ready ✓');
+    console.log(`[App] Bill Sathi ${APP_VERSION} ready ✓`);
   }
 
-  // ─── Public API ──────────────────────────────────────────────────
-  return {
-    init,
-    switchTab,
-    showToast,
-  };
+  return { init, switchTab, showToast };
 
 })();
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
-// Wait for DOM to be fully ready before initializing
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', App.init);
 } else {

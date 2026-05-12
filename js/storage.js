@@ -1,20 +1,12 @@
-/**
- * storage.js
- * All localStorage read/write for the Smart Cashier app.
- * Every other JS file uses these functions — never touches localStorage directly.
- *
- * Keys used:
- *   sc_settings      → shop settings object
- *   sc_products      → array of product objects
- *   sc_khata         → array of khata customer objects
- *   sc_bills_history → array of past bill objects
- */
-
 'use strict';
+
+/**
+ * storage.js — Bill Sathi
+ * Added: product.company field
+ */
 
 const Storage = (() => {
 
-  // ─── Key Constants ───────────────────────────────────────────────
   const KEYS = {
     SETTINGS     : 'sc_settings',
     PRODUCTS     : 'sc_products',
@@ -22,342 +14,168 @@ const Storage = (() => {
     BILLS_HISTORY: 'sc_bills_history',
   };
 
-  // ─── Generic Helpers ─────────────────────────────────────────────
-
-  /** Read and parse a JSON value from localStorage. Returns null on failure. */
   function _get(key) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      console.error(`[Storage] Read error for key "${key}":`, e);
-      return null;
-    }
+    try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; }
+    catch (e) { console.error(`[Storage] Read "${key}":`, e); return null; }
   }
 
-  /** Stringify and write a value to localStorage. Returns true on success. */
   function _set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (e) {
-      console.error(`[Storage] Write error for key "${key}":`, e);
-      return false;
-    }
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { console.error(`[Storage] Write "${key}":`, e); return false; }
   }
 
-  /** Remove a key from localStorage. */
   function _remove(key) {
-    try {
-      localStorage.removeItem(key);
-      return true;
-    } catch (e) {
-      console.error(`[Storage] Remove error for key "${key}":`, e);
-      return false;
-    }
+    try { localStorage.removeItem(key); return true; }
+    catch (e) { console.error(`[Storage] Remove "${key}":`, e); return false; }
   }
 
-  // ─── ID Generator ────────────────────────────────────────────────
-
-  /** Generate a simple unique ID: prefix + timestamp + random suffix */
   function generateId(prefix = 'id') {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  SETTINGS
-  // ═══════════════════════════════════════════════════════════════════
-
+  // ─── Settings ────────────────────────────────────────────────────
   const DEFAULT_SETTINGS = {
-    shopName   : 'Smart Cashier',
-    shopAddress: '',
-    shopPhone  : '',
-    voiceLang  : 'hi-IN',
-    currency   : '₹',
+    shopName: 'Smart Cashier', shopAddress: '', shopPhone: '',
+    voiceLang: 'en-IN', currency: '₹',
   };
 
   function getSettings() {
-    const saved = _get(KEYS.SETTINGS);
-    return saved ? { ...DEFAULT_SETTINGS, ...saved } : { ...DEFAULT_SETTINGS };
+    const s = _get(KEYS.SETTINGS);
+    return s ? { ...DEFAULT_SETTINGS, ...s } : { ...DEFAULT_SETTINGS };
   }
 
-  function saveSettings(settingsObj) {
-    const merged = { ...DEFAULT_SETTINGS, ...settingsObj };
-    return _set(KEYS.SETTINGS, merged);
+  function saveSettings(obj) {
+    return _set(KEYS.SETTINGS, { ...DEFAULT_SETTINGS, ...obj });
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  PRODUCTS
-  // ═══════════════════════════════════════════════════════════════════
+  // ─── Products ────────────────────────────────────────────────────
+  // Shape: { id, name, company, aliases[], sellPrice, costPrice, unit, stock, createdAt, updatedAt }
 
-  /**
-   * Product object shape:
-   * {
-   *   id        : string,
-   *   name      : string,
-   *   aliases   : string[],   // alternate voice match names
-   *   sellPrice : number,
-   *   costPrice : number,
-   *   unit      : string,     // 'pcs' | 'kg' | 'g' | 'ltr' | 'ml' | 'pkt' | 'dozen'
-   *   stock     : number,
-   *   createdAt : ISO string,
-   *   updatedAt : ISO string,
-   * }
-   */
+  function getAllProducts() { return _get(KEYS.PRODUCTS) || []; }
+  function saveAllProducts(arr) { return _set(KEYS.PRODUCTS, arr); }
+  function getProductById(id) { return getAllProducts().find(p => p.id === id) || null; }
 
-  function getAllProducts() {
-    return _get(KEYS.PRODUCTS) || [];
+  /** Return all distinct company names (non-empty), sorted A-Z */
+  function getAllCompanies() {
+    const names = getAllProducts()
+      .map(p => (p.company || '').trim())
+      .filter(Boolean);
+    return [...new Set(names)].sort();
   }
 
-  function saveAllProducts(productsArray) {
-    return _set(KEYS.PRODUCTS, productsArray);
-  }
-
-  function getProductById(id) {
-    return getAllProducts().find(p => p.id === id) || null;
-  }
-
-  function addProduct(productData) {
+  function addProduct(data) {
     const products = getAllProducts();
-    const newProduct = {
+    const p = {
       id        : generateId('prod'),
-      name      : productData.name.trim(),
-      aliases   : Array.isArray(productData.aliases) ? productData.aliases : [],
-      sellPrice : parseFloat(productData.sellPrice) || 0,
-      costPrice : parseFloat(productData.costPrice) || 0,
-      unit      : productData.unit || 'pcs',
-      stock     : parseInt(productData.stock) || 0,
+      name      : data.name.trim(),
+      company   : (data.company || '').trim(),
+      aliases   : Array.isArray(data.aliases) ? data.aliases : [],
+      sellPrice : parseFloat(data.sellPrice) || 0,
+      costPrice : parseFloat(data.costPrice) || 0,
+      unit      : data.unit || 'pcs',
+      stock     : parseInt(data.stock) || 0,
       createdAt : new Date().toISOString(),
       updatedAt : new Date().toISOString(),
     };
-    products.push(newProduct);
+    products.push(p);
     _set(KEYS.PRODUCTS, products);
-    return newProduct;
+    return p;
   }
 
-  function updateProduct(id, updatedData) {
+  function updateProduct(id, data) {
     const products = getAllProducts();
-    const index = products.findIndex(p => p.id === id);
-    if (index === -1) return null;
-
-    products[index] = {
-      ...products[index],
-      ...updatedData,
-      id       : id,                       // never overwrite id
-      updatedAt: new Date().toISOString(),
-    };
+    const i = products.findIndex(p => p.id === id);
+    if (i === -1) return null;
+    products[i] = { ...products[i], ...data, id, updatedAt: new Date().toISOString() };
     _set(KEYS.PRODUCTS, products);
-    return products[index];
+    return products[i];
   }
 
   function deleteProduct(id) {
-    const products = getAllProducts().filter(p => p.id !== id);
-    return _set(KEYS.PRODUCTS, products);
+    return _set(KEYS.PRODUCTS, getAllProducts().filter(p => p.id !== id));
   }
 
-  /** Reduce stock after a sale. Pass itemsArray = [{productId, qty}] */
   function deductStock(itemsArray) {
     const products = getAllProducts();
     itemsArray.forEach(({ productId, qty }) => {
       const p = products.find(p => p.id === productId);
-      if (p && p.stock > 0) {
-        p.stock = Math.max(0, p.stock - qty);
-        p.updatedAt = new Date().toISOString();
-      }
+      if (p && p.stock > 0) { p.stock = Math.max(0, p.stock - qty); p.updatedAt = new Date().toISOString(); }
     });
     return _set(KEYS.PRODUCTS, products);
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  KHATA (Customer Ledger)
-  // ═══════════════════════════════════════════════════════════════════
-
-  /**
-   * Khata customer object shape:
-   * {
-   *   id          : string,
-   *   name        : string,
-   *   phone       : string,
-   *   balance     : number,   // positive = baki (owes you), negative = jama (advance paid)
-   *   transactions: [
-   *     {
-   *       txId     : string,
-   *       type     : 'baki' | 'jama' | 'bill' | 'settle',
-   *       amount   : number,
-   *       note     : string,
-   *       billId   : string | null,
-   *       date     : ISO string,
-   *     }
-   *   ],
-   *   createdAt   : ISO string,
-   * }
-   */
-
-  function getAllKhata() {
-    return _get(KEYS.KHATA) || [];
-  }
-
-  function saveAllKhata(khataArray) {
-    return _set(KEYS.KHATA, khataArray);
-  }
-
-  function getKhataById(id) {
-    return getAllKhata().find(k => k.id === id) || null;
-  }
+  // ─── Khata ───────────────────────────────────────────────────────
+  function getAllKhata() { return _get(KEYS.KHATA) || []; }
+  function saveAllKhata(arr) { return _set(KEYS.KHATA, arr); }
+  function getKhataById(id) { return getAllKhata().find(k => k.id === id) || null; }
 
   function addKhataCustomer(name, phone = '') {
     const khata = getAllKhata();
-
-    // Prevent duplicates by name (case-insensitive)
     const exists = khata.find(k => k.name.toLowerCase() === name.trim().toLowerCase());
     if (exists) return { error: 'Customer already exists', existing: exists };
-
-    const newCustomer = {
-      id          : generateId('cust'),
-      name        : name.trim(),
-      phone       : phone.trim(),
-      balance     : 0,
-      transactions: [],
-      createdAt   : new Date().toISOString(),
+    const c = {
+      id: generateId('cust'), name: name.trim(), phone: phone.trim(),
+      balance: 0, transactions: [], createdAt: new Date().toISOString(),
     };
-    khata.push(newCustomer);
+    khata.push(c);
     _set(KEYS.KHATA, khata);
-    return newCustomer;
+    return c;
   }
 
-  /**
-   * Add a transaction to a khata customer and update their balance.
-   * type: 'baki' → they owe more (balance += amount)
-   * type: 'jama' → they paid in advance (balance -= amount)
-   * type: 'bill' → bill was linked to their khata (balance += amount)
-   * type: 'settle'→ they settled outstanding amount (balance -= amount)
-   */
   function addKhataTransaction(customerId, type, amount, note = '', billId = null) {
     const khata = getAllKhata();
-    const customer = khata.find(k => k.id === customerId);
-    if (!customer) return null;
-
-    const tx = {
-      txId  : generateId('tx'),
-      type,
-      amount: parseFloat(amount) || 0,
-      note,
-      billId,
-      date  : new Date().toISOString(),
-    };
-
-    customer.transactions.push(tx);
-
-    // Update balance
-    if (type === 'baki' || type === 'bill') {
-      customer.balance += tx.amount;
-    } else if (type === 'jama' || type === 'settle') {
-      customer.balance -= tx.amount;
-    }
-
+    const c = khata.find(k => k.id === customerId);
+    if (!c) return null;
+    const tx = { txId: generateId('tx'), type, amount: parseFloat(amount) || 0, note, billId, date: new Date().toISOString() };
+    c.transactions.push(tx);
+    if (type === 'baki' || type === 'bill') c.balance += tx.amount;
+    else if (type === 'jama' || type === 'settle') c.balance -= tx.amount;
     _set(KEYS.KHATA, khata);
     return tx;
   }
 
   function deleteKhataCustomer(id) {
-    const khata = getAllKhata().filter(k => k.id !== id);
-    return _set(KEYS.KHATA, khata);
+    return _set(KEYS.KHATA, getAllKhata().filter(k => k.id !== id));
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  //  BILLS HISTORY
-  // ═══════════════════════════════════════════════════════════════════
-
-  /**
-   * Bill object shape:
-   * {
-   *   billId      : string,
-   *   billNumber  : number,     // auto-incremented display number
-   *   items       : [{ productId, name, qty, sellPrice, costPrice, unit, lineTotal, lineProfit }],
-   *   subtotal    : number,
-   *   discount    : number,
-   *   total       : number,
-   *   totalProfit : number,
-   *   khataCustomerId : string | null,
-   *   khataCustomerName: string | null,
-   *   paymentMode : string,     // 'cash' | 'upi' | 'baki'
-   *   generatedAt : ISO string,
-   * }
-   */
-
-  function getAllBills() {
-    return _get(KEYS.BILLS_HISTORY) || [];
-  }
+  // ─── Bills ───────────────────────────────────────────────────────
+  function getAllBills() { return _get(KEYS.BILLS_HISTORY) || []; }
 
   function getNextBillNumber() {
     const bills = getAllBills();
-    if (bills.length === 0) return 1;
-    return Math.max(...bills.map(b => b.billNumber || 0)) + 1;
+    return bills.length === 0 ? 1 : Math.max(...bills.map(b => b.billNumber || 0)) + 1;
   }
 
-  function saveBill(billData) {
+  function saveBill(data) {
     const bills = getAllBills();
-    const newBill = {
+    const bill = {
       billId           : generateId('bill'),
       billNumber       : getNextBillNumber(),
-      items            : billData.items || [],
-      subtotal         : parseFloat(billData.subtotal) || 0,
-      discount         : parseFloat(billData.discount) || 0,
-      total            : parseFloat(billData.total) || 0,
-      totalProfit      : parseFloat(billData.totalProfit) || 0,
-      khataCustomerId  : billData.khataCustomerId || null,
-      khataCustomerName: billData.khataCustomerName || null,
-      paymentMode      : billData.paymentMode || 'cash',
+      items            : data.items || [],
+      subtotal         : parseFloat(data.subtotal) || 0,
+      discount         : parseFloat(data.discount) || 0,
+      total            : parseFloat(data.total) || 0,
+      totalProfit      : parseFloat(data.totalProfit) || 0,
+      khataCustomerId  : data.khataCustomerId || null,
+      khataCustomerName: data.khataCustomerName || null,
+      paymentMode      : data.paymentMode || 'cash',
       generatedAt      : new Date().toISOString(),
     };
-    bills.unshift(newBill); // newest first
+    bills.unshift(bill);
     _set(KEYS.BILLS_HISTORY, bills);
-    return newBill;
+    return bill;
   }
 
-  function getBillById(billId) {
-    return getAllBills().find(b => b.billId === billId) || null;
-  }
-
-  function clearAllBills() {
-    return _remove(KEYS.BILLS_HISTORY);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  EXPORT
-  // ═══════════════════════════════════════════════════════════════════
+  function getBillById(id) { return getAllBills().find(b => b.billId === id) || null; }
+  function clearAllBills() { return _remove(KEYS.BILLS_HISTORY); }
 
   return {
-    // Settings
-    getSettings,
-    saveSettings,
-
-    // Products
-    getAllProducts,
-    saveAllProducts,
-    getProductById,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    deductStock,
-
-    // Khata
-    getAllKhata,
-    saveAllKhata,
-    getKhataById,
-    addKhataCustomer,
-    addKhataTransaction,
-    deleteKhataCustomer,
-
-    // Bills
-    getAllBills,
-    getNextBillNumber,
-    saveBill,
-    getBillById,
-    clearAllBills,
-
-    // Utils
+    getSettings, saveSettings,
+    getAllProducts, saveAllProducts, getProductById, getAllCompanies,
+    addProduct, updateProduct, deleteProduct, deductStock,
+    getAllKhata, saveAllKhata, getKhataById, addKhataCustomer,
+    addKhataTransaction, deleteKhataCustomer,
+    getAllBills, getNextBillNumber, saveBill, getBillById, clearAllBills,
     generateId,
   };
-
 })();
